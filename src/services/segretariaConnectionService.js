@@ -1,9 +1,12 @@
 "use strict";
 
 function normalizeBaseUrl(value) {
-  return String(value || "")
+  let out = String(value || "")
     .trim()
     .replace(/\/+$/, "");
+  // Accept base values pasted as .../api and normalize to service root.
+  if (/\/api$/i.test(out)) out = out.slice(0, -4);
+  return out;
 }
 
 async function loadSegretariaConnection(client, workspaceId) {
