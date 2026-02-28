@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Magazzino | Dashboard</title>
+    <link rel="stylesheet" href="/app/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <div class="app-shell">
+        <aside class="sidebar">
+          <div class="sidebar-head">
+            <h1>Magazzino</h1>
+            <p>Add-on collegato a Segretaria AI</p>
+          </div>
+          <nav id="tabsNav" class="sidebar-nav">
+            <button class="tab is-active" data-tab="overview">Panoramica</button>
+            <button class="tab" data-tab="quotes">Preventivi</button>
+            <button class="tab" data-tab="clients">Clienti</button>
+            <button class="tab" data-tab="suppliers">Fornitori</button>
+            <button class="tab" data-tab="items">Articoli</button>
+            <button class="tab" data-tab="stock">Stock</button>
+            <button class="tab" data-tab="sheets">Schede Articoli</button>
+            <div class="sidebar-sep"></div>
+            <button class="tab tab-settings" data-tab="settings">Settings</button>
+          </nav>
+        </aside>
+
+        <section class="content">
+          <header class="header">
+            <div>
+              <h2 id="sectionTitle">Panoramica</h2>
+              <p id="sectionSubtitle">Vista operativa in tempo reale</p>
+            </div>
+            <div class="header-actions">
+              <button id="globalRefreshBtn" class="btn">Aggiorna tutto</button>
+            </div>
+          </header>
+
+          <section class="tab-panel is-active" data-panel="overview">
+            <div class="grid grid-4">
+              <article class="kpi">
+                <p class="kpi-label">Connessione</p>
+                <p id="kpiConnection" class="kpi-value">-</p>
+              </article>
+              <article class="kpi">
+                <p class="kpi-label">Articoli attivi</p>
+                <p id="kpiItems" class="kpi-value">0</p>
+              </article>
+              <article class="kpi">
+                <p class="kpi-label">Clienti</p>
+                <p id="kpiClients" class="kpi-value">0</p>
+              </article>
+              <article class="kpi">
+                <p class="kpi-label">Fornitori</p>
+                <p id="kpiSuppliers" class="kpi-value">0</p>
+              </article>
+            </div>
+            <div class="grid grid-2 mt-12">
+              <article class="kpi" id="kpiDraftsCard">
+                <p class="kpi-label">Bozze locali</p>
+                <p id="kpiDrafts" class="kpi-value">0</p>
+              </article>
+              <article class="kpi" id="kpiSegretariaQuotesCard">
+                <p class="kpi-label">Preventivi in Segretaria</p>
+                <p id="kpiSegretariaQuotes" class="kpi-value">0</p>
+              </article>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Ultime bozze</h3>
+              <div id="overviewDrafts" class="stack"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel settings-panel" data-panel="settings">
+            <div class="card settings-card">
+              <h3>Stato connessione</h3>
+              <div id="statusBadge" class="badge badge-muted">Caricamento...</div>
+              <p id="statusText" class="muted">Verifica in corso</p>
+              <p id="statusLastError" class="muted err-text hidden"></p>
+            </div>
+
+            <div class="card mt-12 settings-card">
+              <h3>Accesso</h3>
+              <div class="grid grid-2 settings-grid">
+                <div>
+                  <div class="label">Workspace</div>
+                  <div id="accessWorkspace" class="value-box">-</div>
+                </div>
+                <div>
+                  <div class="label">Connesso dal</div>
+                  <div id="accessConnectedAt" class="value-box">-</div>
+                </div>
+              </div>
+              <details class="technical-details mt-16">
+                <summary>Mostra dettagli tecnici</summary>
+                <div class="grid grid-2 settings-grid mt-12">
+                  <div>
+                    <div class="label">API key</div>
+                    <div id="accessApiKeyPrefix" class="value-box value-box-secret">******</div>
+                  </div>
+                  <div class="full">
+                    <div class="label">Segretaria Base URL</div>
+                    <div id="accessBaseUrl" class="value-box value-box-secret">******</div>
+                  </div>
+                </div>
+              </details>
+              <div class="mt-12 muted settings-note">
+                I dati sensibili sono nascosti e i parametri di connessione non sono modificabili da qui.
+              </div>
+            </div>
+
+            <div class="card mt-12 settings-card">
+              <h3>Conferma collegamento</h3>
+              <p class="muted">
+                Apri questa pagina da Segretaria e conferma il collegamento con token one-time.
+              </p>
+              <div class="actions">
+                <button id="confirmBtn" class="btn btn-primary">Conferma collegamento</button>
+                <button id="refreshBtn" class="btn">Aggiorna stato</button>
+              </div>
+              <p id="connectMessage" class="muted"></p>
+              <details class="technical-details mt-16">
+                <summary>Mostra parametri manuali (tecnico)</summary>
+                <div class="grid grid-2 settings-grid">
+                  <div>
+                    <div class="label">Token</div>
+                    <div id="tokenMasked" class="value-box value-box-secret">******</div>
+                    <input id="tokenInput" type="hidden" />
+                  </div>
+                  <div class="full">
+                    <div class="label">Exchange URL</div>
+                    <div id="exchangeMasked" class="value-box value-box-secret">******</div>
+                    <input id="exchangeInput" type="hidden" />
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Istruzioni rapide</h3>
+              <ol class="steps">
+                <li>Apri Segretaria (admin) in <code>/dashboard/settings/magazzino</code>.</li>
+                <li>Clicca <b>Connetti automaticamente</b>.</li>
+                <li>Si apre questa pagina con token già compilato.</li>
+                <li>Clicca <b>Conferma collegamento</b>.</li>
+              </ol>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="quotes">
+            <div class="card">
+              <div class="row-between">
+                <h3>Nuova bozza preventivo</h3>
+                <button id="refreshSegretariaDataBtn" class="btn">Aggiorna dati Segretaria</button>
+              </div>
+              <p id="segretariaDataMessage" class="muted"></p>
+              <form id="newDraftForm" class="stack">
+                <div class="grid grid-3">
+                  <label>
+                    <span class="label">Numero bozza</span>
+                    <input class="input" name="draft_number" placeholder="DRAFT-001" />
+                  </label>
+                  <label>
+                    <span class="label">Seleziona cliente</span>
+                    <input class="input" name="client_ref" id="quoteClientRefInput" list="quoteClientSuggestionsList" placeholder="Scrivi o scegli un cliente..." />
+                    <datalist id="quoteClientSuggestionsList"></datalist>
+                    <div id="quoteClientQuickSuggestions" class="quote-suggestions"></div>
+                  </label>
+                  <label class="checkbox">
+                    <input type="checkbox" name="reserve_stock" />
+                    <span>Riserva stock</span>
+                  </label>
+                </div>
+                <label>
+                  <span class="label">Note</span>
+                  <textarea class="input" name="notes" rows="2"></textarea>
+                </label>
+
+                <div id="draftLinesContainer" class="stack"></div>
+                <div class="actions">
+                  <button id="addDraftLineBtn" class="btn" type="button">+ Aggiungi riga</button>
+                  <button class="btn btn-primary" type="submit">Salva bozza</button>
+                </div>
+              </form>
+              <p id="newDraftMessage" class="muted"></p>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Bozze locali</h3>
+              <div id="draftsList" class="stack"></div>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Preventivi in Segretaria</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Numero</th>
+                      <th>Stato</th>
+                      <th>Origine</th>
+                      <th>Totale</th>
+                      <th>Azione</th>
+                    </tr>
+                  </thead>
+                  <tbody id="segretariaQuotesTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card mt-12 hidden" id="draftDetailCard">
+              <h3>Dettaglio bozza</h3>
+              <div id="draftDetailContent"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="clients">
+            <div class="card">
+              <div class="row-between">
+                <h3>Clienti (Segretaria)</h3>
+                <div class="actions">
+                  <input id="clientsSearchInput" class="input input-sm" placeholder="Cerca cliente..." />
+                  <button id="clientsSearchBtn" class="btn">Cerca</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Azienda</th>
+                      <th>Email</th>
+                      <th>Telefono</th>
+                      <th>Indirizzo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clientsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="suppliers">
+            <div class="card">
+              <div class="row-between">
+                <h3>Fornitori (Segretaria)</h3>
+                <div class="actions">
+                  <input id="suppliersSearchInput" class="input input-sm" placeholder="Cerca fornitore..." />
+                  <button id="suppliersSearchBtn" class="btn">Cerca</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Azienda</th>
+                      <th>Email</th>
+                      <th>Telefono</th>
+                      <th>Stato</th>
+                    </tr>
+                  </thead>
+                  <tbody id="suppliersTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="items">
+            <div class="card">
+              <h3>Nuovo articolo</h3>
+              <form id="newItemForm" class="grid grid-2">
+                <label>
+                  <span class="label">Nome *</span>
+                  <input class="input" name="name" required />
+                </label>
+                <label>
+                  <span class="label">SKU</span>
+                  <input class="input" name="sku" />
+                </label>
+                <label>
+                  <span class="label">Tipo</span>
+                  <select class="input" name="item_type">
+                    <option value="item">Articolo</option>
+                    <option value="service">Servizio</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="label">Unità</span>
+                  <input class="input" name="unit_label" value="pz" />
+                </label>
+                <label class="full">
+                  <span class="label">Descrizione</span>
+                  <textarea class="input" name="description" rows="3"></textarea>
+                </label>
+                <div class="actions full">
+                  <button class="btn btn-primary" type="submit">Aggiungi articolo</button>
+                </div>
+              </form>
+              <p id="newItemMessage" class="muted"></p>
+            </div>
+
+            <div class="card mt-12">
+              <div class="row-between">
+                <h3>Articoli</h3>
+                <div class="actions">
+                  <input id="itemsSearchInput" class="input input-sm" placeholder="Cerca articolo o sku..." />
+                  <button id="itemsSearchBtn" class="btn">Cerca</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>SKU</th>
+                      <th>Tipo</th>
+                      <th>Unità</th>
+                      <th>Stato</th>
+                    </tr>
+                  </thead>
+                  <tbody id="itemsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="stock">
+            <div class="card">
+              <div class="row-between">
+                <h3>Azioni stock</h3>
+                <button id="openItemsImportBtn" class="btn btn-primary">Import intelligente articoli</button>
+              </div>
+              <p class="muted">Importa articoli da file CSV con preview e doppia conferma.</p>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Nuovo movimento</h3>
+              <form id="newMovementForm" class="grid grid-3">
+                <label>
+                  <span class="label">Magazzino *</span>
+                  <select class="input" name="warehouse_id" required id="movementWarehouseSelect"></select>
+                </label>
+                <label>
+                  <span class="label">Articolo *</span>
+                  <select class="input" name="item_id" required id="movementItemSelect"></select>
+                </label>
+                <label>
+                  <span class="label">Tipo *</span>
+                  <select class="input" name="movement_type" required>
+                    <option value="in">Entrata</option>
+                    <option value="out">Uscita</option>
+                    <option value="reserve">Riserva</option>
+                    <option value="release">Rilascio riserva</option>
+                    <option value="adjustment">Rettifica</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="label">Quantità *</span>
+                  <input class="input" name="quantity" type="number" step="0.001" required />
+                </label>
+                <label class="full">
+                  <span class="label">Motivo</span>
+                  <input class="input" name="reason" />
+                </label>
+                <div class="actions full">
+                  <button class="btn btn-primary" type="submit">Registra movimento</button>
+                </div>
+              </form>
+              <p id="newMovementMessage" class="muted"></p>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Livelli stock</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Magazzino</th>
+                      <th>Articolo</th>
+                      <th>Disponibile</th>
+                      <th>Giacenza</th>
+                      <th>Riservato</th>
+                    </tr>
+                  </thead>
+                  <tbody id="levelsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Movimenti recenti</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Tipo</th>
+                      <th>Magazzino</th>
+                      <th>Articolo</th>
+                      <th>Qtà</th>
+                    </tr>
+                  </thead>
+                  <tbody id="movementsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Nuovo magazzino</h3>
+              <form id="newWarehouseForm" class="grid grid-2">
+                <label>
+                  <span class="label">Nome *</span>
+                  <input class="input" name="name" required />
+                </label>
+                <label class="checkbox">
+                  <input type="checkbox" name="is_default" />
+                  <span>Imposta come predefinito</span>
+                </label>
+                <div class="actions full">
+                  <button class="btn btn-primary" type="submit">Aggiungi magazzino</button>
+                </div>
+              </form>
+              <p id="newWarehouseMessage" class="muted"></p>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="sheets">
+            <div class="card">
+              <div class="row-between">
+                <h3>Filtri schede</h3>
+                <button id="refreshSheetsBtn" class="btn">Aggiorna schede</button>
+              </div>
+              <form id="sheetsFilterForm" class="grid grid-4">
+                <label>
+                  <span class="label">Stato</span>
+                  <select class="input" name="status" id="sheetFilterStatus">
+                    <option value="">Tutti</option>
+                    <option value="DRAFT">DRAFT</option>
+                    <option value="LOCKED">LOCKED</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="label">Task ID</span>
+                  <input class="input" name="task_id" id="sheetFilterTaskId" placeholder="uuid task" />
+                </label>
+                <label>
+                  <span class="label">Project ID</span>
+                  <input class="input" name="project_id" id="sheetFilterProjectId" placeholder="uuid progetto" />
+                </label>
+                <label>
+                  <span class="label">Da data</span>
+                  <input class="input" name="date_from" id="sheetFilterDateFrom" type="date" />
+                </label>
+                <label>
+                  <span class="label">A data</span>
+                  <input class="input" name="date_to" id="sheetFilterDateTo" type="date" />
+                </label>
+                <div class="actions full">
+                  <button class="btn" type="submit">Applica filtri</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Nuova Scheda Articoli</h3>
+              <form id="newSheetForm" class="grid grid-3">
+                <label>
+                  <span class="label">Titolo *</span>
+                  <input class="input" name="title" required placeholder="Scheda cantiere..." />
+                </label>
+                <label>
+                  <span class="label">Task ID (opz.)</span>
+                  <input class="input" name="task_id" placeholder="uuid task" />
+                </label>
+                <label>
+                  <span class="label">Project ID (opz.)</span>
+                  <input class="input" name="project_id" placeholder="uuid progetto" />
+                </label>
+                <label class="full">
+                  <span class="label">Note</span>
+                  <textarea class="input" name="notes" rows="2"></textarea>
+                </label>
+                <div class="actions full">
+                  <button class="btn btn-primary" type="submit">Crea scheda DRAFT</button>
+                </div>
+              </form>
+              <p id="newSheetMessage" class="muted"></p>
+            </div>
+
+            <div class="card mt-12">
+              <h3>Elenco schede</h3>
+              <div id="sheetsList" class="stack"></div>
+            </div>
+
+            <div class="card mt-12 hidden" id="sheetDetailCard">
+              <h3>Dettaglio scheda</h3>
+              <div id="sheetDetailMeta" class="stack"></div>
+              <div class="actions mt-12">
+                <button id="sheetLockBtn" class="btn btn-primary">Conferma / Lock</button>
+                <button id="sheetRefreshBtn" class="btn">Aggiorna dettaglio</button>
+              </div>
+              <p id="sheetDetailMessage" class="muted"></p>
+
+              <div class="card mt-12">
+                <h4>Aggiungi riga</h4>
+                <form id="sheetRowForm" class="grid grid-3">
+                  <label>
+                    <span class="label">Articolo *</span>
+                    <select class="input" name="item_id" id="sheetRowItemSelect"></select>
+                  </label>
+                  <label>
+                    <span class="label">Quantità *</span>
+                    <input class="input" name="qty" type="number" step="0.001" required />
+                  </label>
+                  <label>
+                    <span class="label">Unità</span>
+                    <input class="input" name="unit" placeholder="pz" />
+                  </label>
+                  <div class="actions full">
+                    <button class="btn" type="submit">Aggiungi riga</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="table-wrap mt-12">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Articolo</th>
+                      <th>SKU</th>
+                      <th>Qtà</th>
+                      <th>Unità</th>
+                      <th>Azione</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sheetRowsBody"></tbody>
+                </table>
+              </div>
+
+              <div class="table-wrap mt-12">
+                <h4>Movimenti generati</h4>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Articolo</th>
+                      <th>Magazzino</th>
+                      <th>Tipo</th>
+                      <th>Qtà</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sheetMovementsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <div id="itemsImportModal" class="smart-import-modal hidden" aria-hidden="true">
+      <div class="smart-import-backdrop" data-action="close-import-modal"></div>
+      <div class="smart-import-card">
+        <div class="smart-import-head">
+          <div>
+            <div class="smart-import-kicker">Magazzino Assist</div>
+            <h3>Import intelligente articoli</h3>
+          </div>
+          <button class="btn" data-action="close-import-modal">Chiudi</button>
+        </div>
+        <div class="smart-import-progress">
+          <span id="importStepUpload" class="step-pill is-active">1. Carica</span>
+          <span id="importStepPreview" class="step-pill">2. Preview</span>
+          <span id="importStepConfirm" class="step-pill">3. Conferma</span>
+        </div>
+          <div class="smart-import-body">
+          <div id="itemsImportMessage" class="smart-import-message">
+            Carica CSV/XLSX/PDF/Numbers. V1 supporta import diretto da CSV.
+          </div>
+          <div id="itemsImportAutoInfo" class="muted mt-12"></div>
+          <div class="mt-12">
+            <button id="itemsImportToggleMappingBtn" class="btn btn-sm hidden" type="button">Modifica mapping (avanzato)</button>
+          </div>
+          <div class="grid grid-2">
+            <div class="full">
+              <div id="itemsImportDropzone" class="import-dropzone" tabindex="0" role="button">
+                Trascina qui il file oppure clicca per selezionarlo
+              </div>
+              <p id="itemsImportFileName" class="muted mt-12">Nessun file selezionato.</p>
+            </div>
+            <input id="itemsImportFile" class="hidden" type="file" accept=".csv,.xlsx,.pdf,.numbers" />
+          </div>
+          <div id="itemsImportMappingWrap" class="hidden mt-12">
+            <h4>Mapping colonne</h4>
+            <div id="itemsImportMapping" class="grid grid-2 mt-12"></div>
+          </div>
+          <div id="itemsImportStats" class="mt-12 muted"></div>
+          <div class="table-wrap mt-12">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Decisione</th>
+                  <th>SKU</th>
+                  <th>Nome</th>
+                  <th>Unità</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody id="itemsImportPreviewBody">
+                <tr><td colspan="5" class="muted">Nessuna preview.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="smart-import-actions">
+          <button id="itemsImportAnalyzeBtn" class="btn">Analizza file</button>
+          <button id="itemsImportConfirm1Btn" class="btn">Conferma import (1/2)</button>
+          <button id="itemsImportConfirm2Btn" class="btn btn-primary" disabled>Esegui import (2/2)</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app/app.js"></script>
+  </body>
+</html>

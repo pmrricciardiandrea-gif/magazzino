@@ -1,0 +1,35 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: magazzino_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: magazzino
+    ports:
+      - "5544:5432"
+    volumes:
+      - magazzino_db_data:/var/lib/postgresql/data
+
+  app:
+    image: node:20-alpine
+    container_name: magazzino_app
+    working_dir: /app
+    command: sh -c "npm install && node src/server.js"
+    environment:
+      PORT: 3055
+      DATABASE_URL: postgres://postgres:postgres@db:5432/magazzino
+      WORKSPACE_ID: 00000000-0000-4000-8000-000000000999
+      SEGRETERIA_BASE_URL: http://host.docker.internal:3001
+      SEGRETERIA_API_KEY: change_me
+      SEGRETERIA_HMAC_SECRET: change_me
+    ports:
+      - "3055:3055"
+    volumes:
+      - ./:/app
+    depends_on:
+      - db
+
+volumes:
+  magazzino_db_data:
