@@ -51,6 +51,7 @@
 
   const qs = new URLSearchParams(window.location.search || "");
   let draftLineCounter = 0;
+  let deferredInstallPrompt = null;
 
   const dom = {
     tabsNav: document.getElementById("tabsNav"),
@@ -62,6 +63,7 @@
     kpiSegretariaQuotesCard: document.getElementById("kpiSegretariaQuotesCard"),
     sectionTitle: document.getElementById("sectionTitle"),
     sectionSubtitle: document.getElementById("sectionSubtitle"),
+    pwaInstallBtn: document.getElementById("pwaInstallBtn"),
     globalRefreshBtn: document.getElementById("globalRefreshBtn"),
     kpiConnection: document.getElementById("kpiConnection"),
     kpiItems: document.getElementById("kpiItems"),
@@ -196,6 +198,71 @@
     if (!el) return;
     el.textContent = text || "";
     el.classList.toggle("err-text", Boolean(isError));
+  }
+
+  function isStandaloneMode() {
+    if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) return true;
+    return window.navigator.standalone === true;
+  }
+
+  function isIosDevice() {
+    const ua = String(window.navigator.userAgent || "").toLowerCase();
+    return /iphone|ipad|ipod/.test(ua);
+  }
+
+  function setInstallButtonVisible(visible) {
+    if (!dom.pwaInstallBtn) return;
+    dom.pwaInstallBtn.classList.toggle("hidden", !visible);
+  }
+
+  async function registerPwa() {
+    if (typeof window === "undefined") return;
+    if (isStandaloneMode()) {
+      setInstallButtonVisible(false);
+      return;
+    }
+
+    if ("serviceWorker" in navigator) {
+      try {
+        await navigator.serviceWorker.register("/app/sw.js", { scope: "/app/" });
+      } catch (_) {}
+    }
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      setInstallButtonVisible(true);
+    });
+
+    window.addEventListener("appinstalled", () => {
+      deferredInstallPrompt = null;
+      setInstallButtonVisible(false);
+    });
+
+    if (isIosDevice()) {
+      setInstallButtonVisible(true);
+    }
+  }
+
+  async function promptInstallPwa() {
+    if (isStandaloneMode()) {
+      setInstallButtonVisible(false);
+      return;
+    }
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      try {
+        await deferredInstallPrompt.userChoice;
+      } catch (_) {}
+      deferredInstallPrompt = null;
+      setInstallButtonVisible(false);
+      return;
+    }
+    if (isIosDevice()) {
+      alert('Su iPhone/iPad: apri il menu Condividi in Safari e tocca "Aggiungi a schermata Home".');
+      return;
+    }
+    alert("Installazione non disponibile in questo browser.");
   }
 
   function setStatus(kind, text, details, lastError) {
@@ -1454,6 +1521,10 @@
       activeTab(target.dataset.tab);
     });
 
+    dom.pwaInstallBtn?.addEventListener("click", () => {
+      promptInstallPwa().catch(() => {});
+    });
+
     dom.globalRefreshBtn?.addEventListener("click", loadAll);
     dom.confirmBtn?.addEventListener("click", connectNow);
     dom.refreshBtn?.addEventListener("click", loadConnection);
@@ -1924,6 +1995,7 @@
   async function init() {
     loadActiveWorkspaceIdFromStorage();
     loadWorkspaceRoleFromStorage();
+    await registerPwa();
     bindEvents();
     initConnectionFromQuery();
     applyRoleGates();

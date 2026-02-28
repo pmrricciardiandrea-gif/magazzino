@@ -117,6 +117,12 @@ body {
   font-size: 14px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tab {
   border: 1px solid var(--line);
   background: #fff;
