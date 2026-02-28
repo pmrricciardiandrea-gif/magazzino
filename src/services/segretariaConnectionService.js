@@ -30,6 +30,19 @@ async function loadLatestActiveSegretariaConnection(client) {
   return q.rowCount ? q.rows[0] : null;
 }
 
+async function listActiveSegretariaConnections(client, limit = 25) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(100, Number(limit))) : 25;
+  const q = await client.query(
+    `SELECT workspace_id, segretaria_base_url, is_active, connected_at, updated_at, last_error
+     FROM public.segretaria_connections
+     WHERE is_active=true
+     ORDER BY updated_at DESC NULLS LAST
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return q.rows || [];
+}
+
 async function loadBestSegretariaConnection(client, workspaceId) {
   const direct = await loadSegretariaConnection(client, workspaceId);
   if (direct) return direct;
@@ -103,6 +116,7 @@ module.exports = {
   normalizeBaseUrl,
   loadSegretariaConnection,
   loadLatestActiveSegretariaConnection,
+  listActiveSegretariaConnections,
   loadBestSegretariaConnection,
   saveSegretariaConnection,
   resolveSegretariaConfig,

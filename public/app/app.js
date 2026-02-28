@@ -26,6 +26,7 @@
     segretariaSuppliers: [],
     segretariaQuotes: [],
     activeWorkspaceId: null,
+    availableWorkspaces: [],
     inventorySheetsEnabled: true,
     sheets: [],
     currentSheetId: null,
@@ -753,7 +754,22 @@
   async function loadConnection() {
     try {
       const body = await api("/api/integration/status");
+      state.availableWorkspaces = Array.isArray(body.available_workspaces) ? body.available_workspaces : [];
       if (body.workspace_role) setWorkspaceRole(body.workspace_role);
+      if (body.workspace_required === true && !state.activeWorkspaceId) {
+        state.connection = null;
+        const count = state.availableWorkspaces.length;
+        setStatus(
+          "idle",
+          "Workspace richiesto",
+          count
+            ? `Sono disponibili ${count} workspace: apri Magazzino da Segretaria per impostare il contesto utente.`
+            : "Completa prima il collegamento da Segretaria."
+        );
+        renderAccess();
+        renderOverview();
+        return;
+      }
       state.connection = body.integration || null;
       setActiveWorkspaceId(body.integration?.workspace_id || state.activeWorkspaceId || null);
       if (body.connected) {
@@ -889,8 +905,10 @@
     dom.globalRefreshBtn.disabled = true;
     try {
       await loadSheetsMeta();
+      await loadConnection();
+      const hasWorkspaceContext = Boolean(state.activeWorkspaceId || state.connection?.workspace_id);
+      if (!hasWorkspaceContext) return;
       await Promise.allSettled([
-        loadConnection(),
         loadItems(""),
         loadWarehouses(),
         loadLevels(),
@@ -1873,11 +1891,13 @@
     const queryTab = String(qs.get("tab") || "").trim();
     const queryToken = String(qs.get("token") || "").trim();
     const queryExchange = String(qs.get("exchange_url") || "").trim();
+    const queryWorkspaceId = String(qs.get("workspace_id") || qs.get("workspaceId") || "").trim();
     const queryRole = String(qs.get("workspace_role") || qs.get("role") || "").trim();
     const queryTaskId = String(qs.get("taskId") || qs.get("task_id") || "").trim();
     const queryProjectId = String(qs.get("projectId") || qs.get("project_id") || "").trim();
     if (queryToken) dom.tokenInput.value = queryToken;
     if (queryExchange) dom.exchangeInput.value = queryExchange;
+    if (queryWorkspaceId) setActiveWorkspaceId(queryWorkspaceId);
     if (queryRole) setWorkspaceRole(queryRole);
     if (queryTaskId) {
       state.sheetFilters.taskId = queryTaskId;

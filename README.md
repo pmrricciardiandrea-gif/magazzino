@@ -26,6 +26,12 @@ npm install
 npm run dev
 ```
 
+### Nota workspace context
+
+- `WORKSPACE_ID` in `.env` è solo fallback (single-tenant).
+- In produzione, il contesto corretto deve arrivare da utente/sessione (`x-workspace-id`) oppure dal link di collegamento generato da Segretaria (`workspace_id` in query).
+- Se esiste una sola connessione attiva, Magazzino prova a inferire automaticamente il workspace.
+
 ## Endpoints principali
 
 - `GET /health`

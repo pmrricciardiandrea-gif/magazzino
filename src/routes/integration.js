@@ -4,8 +4,8 @@ const express = require("express");
 const path = require("path");
 const {
   normalizeBaseUrl,
-  loadSegretariaConnection,
   loadBestSegretariaConnection,
+  listActiveSegretariaConnections,
   saveSegretariaConnection,
   apiKeyPrefix,
 } = require("../services/segretariaConnectionService");
@@ -108,14 +108,30 @@ router.post("/api/integration/connect", async (req, res) => {
 
 router.get("/api/integration/status", async (req, res) => {
   const workspaceId = String(req.workspaceId || "").trim();
-  if (!workspaceId) {
-    return res.status(400).json({ ok: false, error: "MISSING_WORKSPACE_ID", details: "Set x-workspace-id or WORKSPACE_ID" });
-  }
   try {
+    if (!workspaceId) {
+      const available = await listActiveSegretariaConnections(req.db, 25);
+      return res.json({
+        ok: true,
+        connected: false,
+        workspace_required: true,
+        workspace_role: req.workspaceRole || null,
+        quotes_access: req.canAccessQuotes === true,
+        integration: null,
+        available_workspaces: available.map((row) => ({
+          workspace_id: row.workspace_id,
+          updated_at: row.updated_at || null,
+          connected_at: row.connected_at || null,
+          has_error: !!row.last_error,
+        })),
+      });
+    }
+
     const row = await loadBestSegretariaConnection(req.db, workspaceId);
     return res.json({
       ok: true,
       connected: !!row && row.is_active === true,
+      workspace_required: false,
       workspace_role: req.workspaceRole || null,
       quotes_access: req.canAccessQuotes === true,
       integration: row
@@ -143,6 +159,8 @@ router.get("/api/integration/status", async (req, res) => {
 router.get("/connect", async (req, res) => {
   const token = String(req.query?.token || "").trim();
   const exchangeUrl = resolveExchangeUrl({ query: req.query });
+  const workspaceId = String(req.query?.workspace_id || req.query?.workspaceId || "").trim();
+  const workspaceRole = String(req.query?.workspace_role || req.query?.role || "").trim();
   if (!token) {
     return res.status(400).send(
       "<html><body style='font-family:sans-serif;padding:24px'><h2>Token mancante</h2><p>Apri il link completo generato da Segretaria AI.</p></body></html>"
@@ -153,6 +171,8 @@ router.get("/connect", async (req, res) => {
     token,
     exchange_url: exchangeUrl,
   });
+  if (workspaceId) query.set("workspace_id", workspaceId);
+  if (workspaceRole) query.set("workspace_role", workspaceRole);
   return res.redirect(302, `/app?${query.toString()}`);
 });
 
