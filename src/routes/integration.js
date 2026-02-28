@@ -176,6 +176,13 @@ router.get("/connect", async (req, res) => {
   return res.redirect(302, `/app?${query.toString()}`);
 });
 
+// Backward-compatible alias in case upstream still builds /app/connect.
+router.get("/app/connect", async (req, res) => {
+  const qs = new URLSearchParams(req.query || {});
+  const encoded = qs.toString();
+  return res.redirect(302, encoded ? `/connect?${encoded}` : "/connect");
+});
+
 router.get("/app", (_req, res) => {
   return res.sendFile(path.join(__dirname, "..", "..", "public", "app", "index.html"));
 });
