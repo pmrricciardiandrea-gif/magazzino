@@ -101,6 +101,9 @@
     suppliersTableBody: document.getElementById("suppliersTableBody"),
     segretariaQuotesTableBody: document.getElementById("segretariaQuotesTableBody"),
     newItemForm: document.getElementById("newItemForm"),
+    newItemImageFile: document.getElementById("newItemImageFile"),
+    newItemImagePreview: document.getElementById("newItemImagePreview"),
+    newItemImagePreviewWrap: document.getElementById("newItemImagePreviewWrap"),
     newItemMessage: document.getElementById("newItemMessage"),
     itemsSearchInput: document.getElementById("itemsSearchInput"),
     itemsSearchBtn: document.getElementById("itemsSearchBtn"),
@@ -448,6 +451,47 @@
     return "item";
   }
 
+  function normalizeImageUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(raw)) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith("/")) return raw;
+    return "";
+  }
+
+  function getItemPreviewImage(item) {
+    const direct = normalizeImageUrl(item?.image_thumb_url || "");
+    if (direct) return direct;
+    return normalizeImageUrl(item?.image_url || "");
+  }
+
+  function setNewItemImagePreview(url) {
+    const clean = normalizeImageUrl(url);
+    if (!dom.newItemImagePreview || !dom.newItemImagePreviewWrap) return;
+    if (!clean) {
+      dom.newItemImagePreviewWrap.classList.add("hidden");
+      dom.newItemImagePreview.removeAttribute("src");
+      return;
+    }
+    dom.newItemImagePreview.src = clean;
+    dom.newItemImagePreviewWrap.classList.remove("hidden");
+  }
+
+  async function readFileAsDataUrl(file, maxSizeMb = 3) {
+    if (!file) return "";
+    const maxBytes = Math.max(1, Number(maxSizeMb || 3)) * 1024 * 1024;
+    if (Number(file.size || 0) > maxBytes) {
+      throw new Error(`Immagine troppo grande (max ${maxSizeMb}MB)`);
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Impossibile leggere immagine"));
+      reader.readAsDataURL(file);
+    });
+  }
+
   function normalizeHeader(value) {
     return String(value || "")
       .normalize("NFD")
@@ -507,6 +551,13 @@
       description: ["descrizione", "description", "dettagli"],
       unit_label: ["unita", "unit", "u m", "misura", "unit label"],
       item_type: ["tipo", "type", "categoria"],
+      category: ["categoria", "category", "famiglia", "gruppo"],
+      unit_price: ["prezzo", "prezzo vendita", "listino", "price", "unit price", "prezzo_vendita"],
+      cost: ["costo", "cost", "prezzo acquisto"],
+      quantity: ["quantita", "qty", "giacenza", "stock", "qta", "quantità"],
+      vat_rate: ["iva", "vat", "aliquota", "iva_percentuale"],
+      barcode: ["barcode", "ean", "ean13", "upc"],
+      image_url: ["immagine", "image", "img", "foto", "photo", "image_url", "thumbnail"],
     };
     const normalizedHeaders = headers.map((header) => normalizeHeader(header));
     const mapping = {};
@@ -517,6 +568,78 @@
       if (idx >= 0) mapping[field] = idx;
     });
     return mapping;
+  }
+
+  function aiRecheckItemMapping(headers, rows, currentMapping) {
+    const mapping = { ...(currentMapping || {}) };
+    const normalizedHeaders = (headers || []).map((h) => normalizeHeader(h));
+    const sampleRows = (rows || []).slice(0, 30);
+    const empty = (v) => String(v == null ? "" : v).trim() === "";
+    const pickByPattern = (predicate) => {
+      for (let col = 0; col < normalizedHeaders.length; col += 1) {
+        const values = sampleRows.map((row) => String((row || [])[col] || "").trim()).filter(Boolean);
+        if (!values.length) continue;
+        const ratio = values.filter(predicate).length / values.length;
+        if (ratio >= 0.6) return col;
+      }
+      return -1;
+    };
+
+    if (!Number.isInteger(mapping.vat_rate)) {
+      const idx = pickByPattern((value) => {
+        const n = Number(String(value).replace(",", "."));
+        return Number.isFinite(n) && n >= 0 && n <= 100;
+      });
+      if (idx >= 0) mapping.vat_rate = idx;
+    }
+
+    if (!Number.isInteger(mapping.quantity)) {
+      const idx = pickByPattern((value) => {
+        const n = Number(String(value).replace(",", "."));
+        return Number.isFinite(n) && n >= 0;
+      });
+      if (idx >= 0) mapping.quantity = idx;
+    }
+
+    if (!Number.isInteger(mapping.barcode)) {
+      const idx = pickByPattern((value) => /^[0-9]{8,14}$/.test(value.replace(/\s/g, "")));
+      if (idx >= 0) mapping.barcode = idx;
+    }
+
+    if (!Number.isInteger(mapping.name)) {
+      const idx = normalizedHeaders.findIndex((header) => header.includes("nome") || header.includes("articolo"));
+      if (idx >= 0) mapping.name = idx;
+    }
+
+    if (!Number.isInteger(mapping.sku)) {
+      const idx = normalizedHeaders.findIndex((header) => header.includes("sku") || header.includes("codice"));
+      if (idx >= 0) mapping.sku = idx;
+    }
+
+    const used = new Set();
+    Object.entries(mapping).forEach(([key, value]) => {
+      const idx = Number(value);
+      if (!Number.isInteger(idx) || idx < 0) return;
+      if (used.has(idx) && !["unit_price", "cost", "quantity", "vat_rate"].includes(key)) {
+        mapping[key] = -1;
+        return;
+      }
+      used.add(idx);
+    });
+    return mapping;
+  }
+
+  function parseImportNumber(value) {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return null;
+    const cleaned = raw
+      .replace(/\s/g, "")
+      .replace(/€/g, "")
+      .replace(/[^0-9,.-]/g, "")
+      .replace(/\.(?=.*\.)/g, "")
+      .replace(",", ".");
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : null;
   }
 
   function updateImportStep(step) {
@@ -593,6 +716,13 @@
       { key: "description", label: "Descrizione" },
       { key: "unit_label", label: "Unità" },
       { key: "item_type", label: "Tipo" },
+      { key: "category", label: "Categoria" },
+      { key: "unit_price", label: "Prezzo vendita" },
+      { key: "cost", label: "Costo" },
+      { key: "quantity", label: "Quantità" },
+      { key: "vat_rate", label: "IVA %" },
+      { key: "barcode", label: "Barcode" },
+      { key: "image_url", label: "Immagine URL" },
     ];
     dom.itemsImportMappingWrap.classList.remove("hidden");
     dom.itemsImportMapping.innerHTML = fields
@@ -617,7 +747,7 @@
     if (!dom.itemsImportAutoInfo) return;
     const headers = state.importWizard.headers || [];
     const mapping = state.importWizard.mapping || {};
-    const mappedCount = ["sku", "name", "description", "unit_label", "item_type"].reduce((acc, key) => {
+    const mappedCount = ["sku", "name", "description", "unit_label", "item_type", "category", "unit_price", "cost", "quantity", "vat_rate", "barcode", "image_url"].reduce((acc, key) => {
       const idx = Number(mapping[key]);
       return Number.isInteger(idx) && idx >= 0 ? acc + 1 : acc;
     }, 0);
@@ -625,7 +755,7 @@
       dom.itemsImportAutoInfo.textContent = "";
       return;
     }
-    dom.itemsImportAutoInfo.textContent = `Auto-mapping attivo: ${mappedCount}/5 campi mappati automaticamente.`;
+    dom.itemsImportAutoInfo.textContent = `LLM-first + controllo automatico: ${mappedCount}/12 campi mappati automaticamente.`;
   }
 
   function rebuildImportPreview() {
@@ -656,16 +786,23 @@
       const description = pick("description");
       const unit_label = pick("unit_label") || "pz";
       const item_type = normalizeItemType(pick("item_type"));
+      const category = pick("category");
+      const unit_price = parseImportNumber(pick("unit_price"));
+      const cost = parseImportNumber(pick("cost"));
+      const quantity = parseImportNumber(pick("quantity"));
+      const vat_rate = parseImportNumber(pick("vat_rate"));
+      const barcode = pick("barcode");
+      const image_url = pick("image_url");
 
       if (!sku && !name) {
-        preview.push({ row_index: index + 1, decision: "invalid", sku, name, unit_label, item_type });
+        preview.push({ row_index: index + 1, decision: "invalid", sku, name, unit_label, item_type, category, unit_price, cost, quantity, vat_rate, barcode, image_url });
         stats.invalid += 1;
         return;
       }
 
       const dedupeKey = sku ? `sku:${sku.toLowerCase()}` : `name:${name.toLowerCase()}`;
       if (seenKeys.has(dedupeKey)) {
-        preview.push({ row_index: index + 1, decision: "invalid", sku, name, unit_label, item_type });
+        preview.push({ row_index: index + 1, decision: "invalid", sku, name, unit_label, item_type, category, unit_price, cost, quantity, vat_rate, barcode, image_url });
         stats.invalid += 1;
         return;
       }
@@ -675,7 +812,7 @@
       const decision = matched ? "update" : "insert";
       if (decision === "insert") stats.insert += 1;
       if (decision === "update") stats.update += 1;
-      preview.push({ row_index: index + 1, decision, sku, name, description, unit_label, item_type });
+      preview.push({ row_index: index + 1, decision, sku, name, description, unit_label, item_type, category, unit_price, cost, quantity, vat_rate, barcode, image_url });
     });
 
     state.importWizard.previewRows = preview;
@@ -696,11 +833,17 @@
                   <td>${esc(row.name || "-")}</td>
                   <td>${esc(row.unit_label || "-")}</td>
                   <td>${esc(row.item_type || "-")}</td>
+                  <td>${esc(row.category || "-")}</td>
+                  <td>${row.unit_price == null ? "-" : esc(row.unit_price)}</td>
+                  <td>${row.cost == null ? "-" : esc(row.cost)}</td>
+                  <td>${row.quantity == null ? "-" : esc(row.quantity)}</td>
+                  <td>${row.vat_rate == null ? "-" : esc(row.vat_rate)}</td>
+                  <td>${row.image_url ? "si" : "-"}</td>
                 </tr>
               `
             )
             .join("")
-        : '<tr><td colspan="5" class="muted">Nessuna riga valida.</td></tr>';
+        : '<tr><td colspan="11" class="muted">Nessuna riga valida.</td></tr>';
     }
     updateImportStep("preview");
   }
@@ -725,7 +868,9 @@
     }
     state.importWizard.headers = parsed.headers;
     state.importWizard.rows = parsed.rows;
+    setImportMessage("Analisi completata. Avvio mapping AI-first...", false);
     state.importWizard.mapping = autoMapItemHeaders(parsed.headers);
+    state.importWizard.mapping = aiRecheckItemMapping(parsed.headers, parsed.rows, state.importWizard.mapping);
     state.importWizard.confirmToken1 = null;
     state.importWizard.showManualMapping = false;
     if (dom.itemsImportConfirm2Btn) dom.itemsImportConfirm2Btn.disabled = true;
@@ -733,7 +878,7 @@
     renderImportAutoInfo();
     renderImportMappingControls();
     rebuildImportPreview();
-    setImportMessage(`Analisi completata: ${parsed.rows.length} righe lette. Mapping automatico pronto.`, false);
+    setImportMessage(`Analisi completata: ${parsed.rows.length} righe lette. Mapping AI-first ricontrollato e pronto.`, false);
   }
 
   function openImportModal() {
@@ -775,6 +920,13 @@
         description: row.description || null,
         unit_label: row.unit_label || "pz",
         item_type: row.item_type || "item",
+        category: row.category || null,
+        unit_price: row.unit_price == null ? null : row.unit_price,
+        cost: row.cost == null ? null : row.cost,
+        quantity: row.quantity == null ? null : row.quantity,
+        vat_rate: row.vat_rate == null ? null : row.vat_rate,
+        barcode: row.barcode || null,
+        image_url: row.image_url || null,
       }));
     if (!rows.length) {
       setImportMessage("Nessuna riga da inviare.", true);
@@ -782,15 +934,28 @@
     }
     if (dom.itemsImportConfirm2Btn) dom.itemsImportConfirm2Btn.disabled = true;
     try {
-      const body = await api("/api/items/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows }),
-      });
+      let body;
+      try {
+        body = await api("/api/items/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows }),
+        });
+      } catch (err) {
+        if (String(err.message || "").toUpperCase().includes("NOT_FOUND")) {
+          body = await api("/api/items/import/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows }),
+          });
+        } else {
+          throw err;
+        }
+      }
       await Promise.allSettled([loadItems(dom.itemsSearchInput?.value || ""), loadLevels(), loadMovements()]);
       const stats = body.stats || {};
       setImportMessage(
-        `Import completato: ${Number(stats.inserted || 0)} inseriti, ${Number(stats.updated || 0)} aggiornati, ${Number(stats.errors || 0)} errori.`,
+        `Import completato: ${Number(stats.inserted || 0)} inseriti, ${Number(stats.updated || 0)} aggiornati, ${Number(stats.errors || 0)} errori, ${Number(stats.priced || 0)} righe listino aggiornate.`,
         false
       );
       updateImportStep("preview");
@@ -1126,13 +1291,15 @@
 
   function renderItems() {
     if (!state.items.length) {
-      dom.itemsTableBody.innerHTML = '<tr><td colspan="5" class="muted">Nessun articolo.</td></tr>';
+      dom.itemsTableBody.innerHTML = '<tr><td colspan="6" class="muted">Nessun articolo.</td></tr>';
       return;
     }
     dom.itemsTableBody.innerHTML = state.items
       .map((item) => {
+        const imageUrl = getItemPreviewImage(item);
         return `
           <tr>
+            <td>${imageUrl ? `<img class="item-thumb" src="${esc(imageUrl)}" alt="${esc(item.name || "Articolo")}" loading="lazy" />` : '<span class="item-thumb-placeholder">IMG</span>'}</td>
             <td>${esc(item.name)}</td>
             <td>${esc(item.sku || "-")}</td>
             <td>${esc(item.item_type || "-")}</td>
@@ -1706,12 +1873,20 @@
     dom.newItemForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const fd = new FormData(dom.newItemForm);
+      const imageUrlInput = normalizeImageUrl(fd.get("image_url"));
+      const imageFile = dom.newItemImageFile?.files?.[0] || null;
+      let finalImageUrl = imageUrlInput || "";
+      if (!finalImageUrl && imageFile) {
+        setText(dom.newItemMessage, "Un secondo che preparo l'immagine...", false);
+        finalImageUrl = normalizeImageUrl(await readFileAsDataUrl(imageFile));
+      }
       const payload = {
         name: String(fd.get("name") || "").trim(),
         sku: String(fd.get("sku") || "").trim() || null,
         description: String(fd.get("description") || "").trim() || null,
         unit_label: String(fd.get("unit_label") || "pz").trim() || "pz",
         item_type: String(fd.get("item_type") || "item").trim() || "item",
+        image_url: finalImageUrl || null,
       };
       try {
         await api("/api/items", {
@@ -1721,11 +1896,34 @@
         });
         dom.newItemForm.reset();
         dom.newItemForm.querySelector('[name="unit_label"]').value = "pz";
+        if (dom.newItemImageFile) dom.newItemImageFile.value = "";
+        setNewItemImagePreview("");
         setText(dom.newItemMessage, "Articolo creato", false);
         await loadItems(dom.itemsSearchInput.value);
       } catch (err) {
         setText(dom.newItemMessage, String(err.message || err), true);
       }
+    });
+
+    dom.newItemImageFile?.addEventListener("change", async () => {
+      const file = dom.newItemImageFile?.files?.[0] || null;
+      if (!file) {
+        const imageInput = dom.newItemForm?.querySelector('[name="image_url"]');
+        setNewItemImagePreview(imageInput?.value || "");
+        return;
+      }
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        const imageInput = dom.newItemForm?.querySelector('[name="image_url"]');
+        if (imageInput) imageInput.value = dataUrl;
+        setNewItemImagePreview(dataUrl);
+      } catch (err) {
+        setText(dom.newItemMessage, String(err.message || err), true);
+      }
+    });
+
+    dom.newItemForm?.querySelector('[name="image_url"]')?.addEventListener("input", (event) => {
+      setNewItemImagePreview(event?.target?.value || "");
     });
 
     dom.newWarehouseForm?.addEventListener("submit", async (event) => {

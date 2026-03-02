@@ -301,6 +301,19 @@
                   <input class="input" name="unit_label" value="pz" />
                 </label>
                 <label class="full">
+                  <span class="label">Immagine (URL)</span>
+                  <input class="input" name="image_url" placeholder="https://... oppure data:image/..." />
+                </label>
+                <label class="full">
+                  <span class="label">Immagine (file)</span>
+                  <input id="newItemImageFile" class="input" type="file" accept="image/*" />
+                </label>
+                <div class="full">
+                  <div id="newItemImagePreviewWrap" class="item-image-preview hidden">
+                    <img id="newItemImagePreview" alt="Anteprima immagine articolo" />
+                  </div>
+                </div>
+                <label class="full">
                   <span class="label">Descrizione</span>
                   <textarea class="input" name="description" rows="3"></textarea>
                 </label>
@@ -323,6 +336,7 @@
                 <table class="table">
                   <thead>
                     <tr>
+                      <th>Anteprima</th>
                       <th>Nome</th>
                       <th>SKU</th>
                       <th>Tipo</th>
@@ -616,10 +630,16 @@
                   <th>Nome</th>
                   <th>Unità</th>
                   <th>Tipo</th>
+                  <th>Categoria</th>
+                  <th>Prezzo</th>
+                  <th>Costo</th>
+                  <th>Qtà</th>
+                  <th>IVA %</th>
+                  <th>Img</th>
                 </tr>
               </thead>
               <tbody id="itemsImportPreviewBody">
-                <tr><td colspan="5" class="muted">Nessuna preview.</td></tr>
+                <tr><td colspan="11" class="muted">Nessuna preview.</td></tr>
               </tbody>
             </table>
           </div>

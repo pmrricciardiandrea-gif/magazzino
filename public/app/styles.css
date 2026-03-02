@@ -535,6 +535,47 @@ textarea.input {
   font-weight: 700;
 }
 
+.item-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  object-fit: cover;
+  display: block;
+}
+
+.item-thumb-placeholder {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px dashed var(--line);
+  color: #94a3b8;
+  background: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.item-image-preview {
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+  display: inline-flex;
+}
+
+.item-image-preview img {
+  width: 86px;
+  height: 86px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
+}
+
 .mini-card {
   border: 1px solid var(--line);
   border-radius: 12px;
