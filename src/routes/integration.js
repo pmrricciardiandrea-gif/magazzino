@@ -61,11 +61,8 @@ async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "", user
   const headers = { "Content-Type": "application/json" };
   if (workspaceHeader) headers["x-workspace-id"] = workspaceHeader;
   if (userHeader) headers["x-user-id"] = userHeader;
-  const response = await fetch(exchangeUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ token }),
-  });
+  const body = JSON.stringify({ token });
+  const response = await postExchangeWithRedirect(exchangeUrl, { headers, body });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const fallbackUrl = deriveFallbackExchangeUrl(exchangeUrl);
@@ -82,6 +79,23 @@ async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "", user
     throw err;
   }
   return payload || {};
+}
+
+async function postExchangeWithRedirect(url, { headers, body }, depth = 0) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body,
+    redirect: "manual",
+  });
+  if ([301, 302, 303, 307, 308].includes(Number(response.status)) && depth < 5) {
+    const location = String(response.headers.get("location") || "").trim();
+    if (location) {
+      const nextUrl = new URL(location, url).toString();
+      return postExchangeWithRedirect(nextUrl, { headers, body }, depth + 1);
+    }
+  }
+  return response;
 }
 
 async function handleConnect(db, { token, exchangeUrl, workspaceId = "", userId = "" }) {
