@@ -55,10 +55,12 @@ function deriveFallbackExchangeUrl(raw) {
   return "";
 }
 
-async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "" }) {
+async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "", userId = "" }) {
   const workspaceHeader = String(workspaceId || "").trim();
+  const userHeader = String(userId || "").trim();
   const headers = { "Content-Type": "application/json" };
   if (workspaceHeader) headers["x-workspace-id"] = workspaceHeader;
+  if (userHeader) headers["x-user-id"] = userHeader;
   const response = await fetch(exchangeUrl, {
     method: "POST",
     headers,
@@ -69,7 +71,7 @@ async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "" }) {
     const fallbackUrl = deriveFallbackExchangeUrl(exchangeUrl);
     const missingWs = String(payload?.error || "").toUpperCase() === "MISSING_WORKSPACE_ID";
     if (fallbackUrl && fallbackUrl !== exchangeUrl && (response.status === 400 || response.status === 404 || missingWs)) {
-      return exchangeConnectToken({ token, exchangeUrl: fallbackUrl, workspaceId });
+      return exchangeConnectToken({ token, exchangeUrl: fallbackUrl, workspaceId, userId });
     }
   }
   if (!response.ok) {
@@ -82,7 +84,7 @@ async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "" }) {
   return payload || {};
 }
 
-async function handleConnect(db, { token, exchangeUrl, workspaceId = "" }) {
+async function handleConnect(db, { token, exchangeUrl, workspaceId = "", userId = "" }) {
   const cleanToken = String(token || "").trim();
   if (!cleanToken) {
     const err = new Error("token is required");
@@ -101,6 +103,7 @@ async function handleConnect(db, { token, exchangeUrl, workspaceId = "" }) {
     token: cleanToken,
     exchangeUrl,
     workspaceId,
+    userId,
   });
   const connectedWorkspaceId = String(exchanged.workspace_id || "").trim();
   const segretariaBaseUrl = normalizeBaseUrl(exchanged.segretaria_base_url || "");
@@ -132,11 +135,13 @@ async function handleConnect(db, { token, exchangeUrl, workspaceId = "" }) {
 router.post("/api/integration/connect", async (req, res) => {
   const exchangeUrl = resolveExchangeUrl({ body: req.body, query: req.query });
   const workspaceId = String(req.workspaceId || req.body?.workspace_id || req.query?.workspace_id || "").trim();
+  const userId = String(req.body?.user_id || req.query?.user_id || req.header("x-user-id") || "").trim();
   try {
     const result = await handleConnect(req.db, {
       token: req.body?.token,
       exchangeUrl,
       workspaceId,
+      userId,
     });
     return res.json({ ok: true, ...result });
   } catch (err) {
@@ -205,6 +210,7 @@ router.get("/connect", async (req, res) => {
   const exchangeUrl = resolveExchangeUrl({ query: req.query });
   const workspaceId = String(req.query?.workspace_id || req.query?.workspaceId || "").trim();
   const workspaceRole = String(req.query?.workspace_role || req.query?.role || "").trim();
+  const userId = String(req.query?.user_id || req.query?.userId || "").trim();
   if (!token) {
     return res.status(400).send(
       "<html><body style='font-family:sans-serif;padding:24px'><h2>Token mancante</h2><p>Apri il link completo generato da Segretaria AI.</p></body></html>"
@@ -217,6 +223,7 @@ router.get("/connect", async (req, res) => {
   });
   if (workspaceId) query.set("workspace_id", workspaceId);
   if (workspaceRole) query.set("workspace_role", workspaceRole);
+  if (userId) query.set("user_id", userId);
   return res.redirect(302, `/app?${query.toString()}`);
 });
 

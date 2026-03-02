@@ -1,6 +1,7 @@
 (function () {
   const WORKSPACE_STORAGE_KEY = "magazzino.active_workspace_id";
   const WORKSPACE_ROLE_STORAGE_KEY = "magazzino.active_workspace_role";
+  const USER_STORAGE_KEY = "magazzino.active_user_id";
 
   const TAB_META = {
     overview: { title: "Panoramica", subtitle: "Vista operativa in tempo reale" },
@@ -26,6 +27,7 @@
     segretariaSuppliers: [],
     segretariaQuotes: [],
     activeWorkspaceId: null,
+    activeUserId: null,
     availableWorkspaces: [],
     inventorySheetsEnabled: true,
     sheets: [],
@@ -286,6 +288,12 @@
     return raw;
   }
 
+  function normalizeUserId(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    return raw;
+  }
+
   function setActiveWorkspaceId(value) {
     const ws = normalizeWorkspaceId(value);
     state.activeWorkspaceId = ws;
@@ -299,6 +307,22 @@
     try {
       const ws = normalizeWorkspaceId(window.localStorage.getItem(WORKSPACE_STORAGE_KEY));
       if (ws) state.activeWorkspaceId = ws;
+    } catch (_) {}
+  }
+
+  function setActiveUserId(value) {
+    const uid = normalizeUserId(value);
+    state.activeUserId = uid;
+    try {
+      if (uid) window.localStorage.setItem(USER_STORAGE_KEY, uid);
+      else window.localStorage.removeItem(USER_STORAGE_KEY);
+    } catch (_) {}
+  }
+
+  function loadActiveUserIdFromStorage() {
+    try {
+      const uid = normalizeUserId(window.localStorage.getItem(USER_STORAGE_KEY));
+      if (uid) state.activeUserId = uid;
     } catch (_) {}
   }
 
@@ -385,6 +409,9 @@
     const merged = { ...(inputHeaders || {}) };
     if (state.activeWorkspaceId && !merged["x-workspace-id"] && !merged["X-Workspace-Id"]) {
       merged["x-workspace-id"] = state.activeWorkspaceId;
+    }
+    if (state.activeUserId && !merged["x-user-id"] && !merged["X-User-Id"]) {
+      merged["x-user-id"] = state.activeUserId;
     }
     if (state.workspaceRole && !merged["x-workspace-role"] && !merged["X-Workspace-Role"]) {
       merged["x-workspace-role"] = state.workspaceRole;
@@ -1484,6 +1511,7 @@
           token,
           exchange_url: exchangeUrl || undefined,
           workspace_id: state.activeWorkspaceId || state.connection?.workspace_id || undefined,
+          user_id: state.activeUserId || undefined,
         }),
       });
       setActiveWorkspaceId(body.workspace_id || null);
@@ -1968,12 +1996,14 @@
     const queryExchange = String(qs.get("exchange_url") || "").trim();
     const queryWorkspaceId = String(qs.get("workspace_id") || qs.get("workspaceId") || "").trim();
     const queryRole = String(qs.get("workspace_role") || qs.get("role") || "").trim();
+    const queryUserId = String(qs.get("user_id") || qs.get("userId") || "").trim();
     const queryTaskId = String(qs.get("taskId") || qs.get("task_id") || "").trim();
     const queryProjectId = String(qs.get("projectId") || qs.get("project_id") || "").trim();
     if (queryToken) dom.tokenInput.value = queryToken;
     if (queryExchange) dom.exchangeInput.value = queryExchange;
     if (queryWorkspaceId) setActiveWorkspaceId(queryWorkspaceId);
     if (queryRole) setWorkspaceRole(queryRole);
+    if (queryUserId) setActiveUserId(queryUserId);
     if (queryTaskId) {
       state.sheetFilters.taskId = queryTaskId;
       if (dom.sheetFilterTaskId) dom.sheetFilterTaskId.value = queryTaskId;
@@ -1998,6 +2028,7 @@
 
   async function init() {
     loadActiveWorkspaceIdFromStorage();
+    loadActiveUserIdFromStorage();
     loadWorkspaceRoleFromStorage();
     await registerPwa();
     bindEvents();
