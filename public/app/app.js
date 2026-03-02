@@ -1617,7 +1617,7 @@
           </label>
           <label class="full">
             <span class="label">Descrizione *</span>
-            <input class="input" name="description" required />
+            <input class="input" name="description" placeholder="Descrizione articolo auto + eventuale nota aggiuntiva" required />
           </label>
           <label>
             <span class="label">Quantità</span>
@@ -1646,6 +1646,48 @@
     dom.draftLinesContainer.insertAdjacentHTML("beforeend", newDraftLineTemplate(id));
   }
 
+  function findItemById(itemId) {
+    const cleanId = String(itemId || "").trim();
+    if (!cleanId) return null;
+    return (state.items || []).find((item) => String(item?.id || "").trim() === cleanId) || null;
+  }
+
+  function baseDescriptionForItem(item) {
+    if (!item || typeof item !== "object") return "";
+    const description = String(item.description || "").trim();
+    const name = String(item.name || "").trim();
+    return description || name || "";
+  }
+
+  function applySelectedItemToDraftLine(lineEl, { forceOverwrite = false } = {}) {
+    if (!lineEl) return;
+    const itemSelect = lineEl.querySelector('select[name="item_id"]');
+    const descriptionInput = lineEl.querySelector('input[name="description"]');
+    const titleInput = lineEl.querySelector('input[name="title"]');
+    const lineTypeSelect = lineEl.querySelector('select[name="line_type"]');
+    if (!itemSelect || !descriptionInput) return;
+
+    const selectedItem = findItemById(itemSelect.value);
+    if (!selectedItem) {
+      descriptionInput.dataset.baseDescription = "";
+      return;
+    }
+
+    const baseDescription = baseDescriptionForItem(selectedItem);
+    const currentDescription = String(descriptionInput.value || "").trim();
+    const previousBase = String(descriptionInput.dataset.baseDescription || "").trim();
+
+    if (lineTypeSelect) lineTypeSelect.value = "item";
+    if (titleInput && !String(titleInput.value || "").trim()) {
+      titleInput.value = String(selectedItem.name || "").trim();
+    }
+
+    if (baseDescription && (forceOverwrite || !currentDescription || currentDescription === previousBase)) {
+      descriptionInput.value = baseDescription;
+    }
+    descriptionInput.dataset.baseDescription = baseDescription;
+  }
+
   function renderDraftLinesItemOptions() {
     const options = ['<option value="">Nessuno</option>'].concat(
       state.items.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`)
@@ -1654,26 +1696,61 @@
       const current = String(selectEl.value || "");
       selectEl.innerHTML = options.join("");
       if (current) selectEl.value = current;
+      const lineEl = selectEl.closest(".line-card");
+      applySelectedItemToDraftLine(lineEl, { forceOverwrite: false });
     });
   }
 
   function collectDraftLines() {
     const rows = [];
-    dom.draftLinesContainer.querySelectorAll(".line-card").forEach((lineEl, idx) => {
+    let sortOrder = 0;
+    dom.draftLinesContainer.querySelectorAll(".line-card").forEach((lineEl) => {
       const get = (name) => lineEl.querySelector(`[name="${name}"]`);
-      const description = String(get("description")?.value || "").trim();
-      if (!description) return;
+      const lineType = String(get("line_type")?.value || "item").trim() || "item";
+      const itemId = String(get("item_id")?.value || "").trim() || null;
+      const title = String(get("title")?.value || "").trim() || null;
+      const typedDescription = String(get("description")?.value || "").trim();
+
+      const item = itemId ? findItemById(itemId) : null;
+      const itemBaseDescription = baseDescriptionForItem(item);
+      const mainDescription = itemId
+        ? itemBaseDescription || typedDescription || title || "Riga bozza"
+        : typedDescription || title || "";
+      if (!mainDescription) return;
+
       rows.push({
-        line_type: String(get("line_type")?.value || "item").trim(),
-        item_id: String(get("item_id")?.value || "").trim() || null,
-        title: String(get("title")?.value || "").trim() || null,
-        description,
+        line_type: lineType,
+        item_id: itemId,
+        title,
+        description: mainDescription,
         quantity: Number(get("quantity")?.value || 1),
         unit_label: String(get("unit_label")?.value || "pz").trim() || "pz",
         unit_price_cents: toCents(get("unit_price_eur")?.value),
         vat_rate: Number(get("vat_rate")?.value || 22),
-        sort_order: idx,
+        sort_order: sortOrder++,
       });
+
+      // If the user wrote extra text in description while an item is selected,
+      // persist it as a dedicated note line immediately below the item line.
+      if (itemId && typedDescription && typedDescription !== mainDescription) {
+        let extraNote = typedDescription;
+        if (mainDescription && typedDescription.startsWith(mainDescription)) {
+          extraNote = typedDescription.slice(mainDescription.length).replace(/^[\s\-–—:]+/, "").trim();
+        }
+        if (extraNote) {
+          rows.push({
+            line_type: "note",
+            item_id: null,
+            title: null,
+            description: extraNote,
+            quantity: 0,
+            unit_label: "",
+            unit_price_cents: 0,
+            vat_rate: 0,
+            sort_order: sortOrder++,
+          });
+        }
+      }
     });
     return rows;
   }
@@ -2092,6 +2169,13 @@
       const lineEl = dom.draftLinesContainer.querySelector(`[data-line-id="${lineId}"]`);
       if (lineEl) lineEl.remove();
       if (!dom.draftLinesContainer.querySelector(".line-card")) addDraftLine();
+    });
+
+    dom.draftLinesContainer?.addEventListener("change", (event) => {
+      const itemSelect = event.target.closest('select[name="item_id"]');
+      if (!itemSelect) return;
+      const lineEl = itemSelect.closest(".line-card");
+      applySelectedItemToDraftLine(lineEl, { forceOverwrite: true });
     });
 
     dom.newDraftForm?.addEventListener("submit", async (event) => {
