@@ -184,6 +184,7 @@ router.post("/:id/push-to-segretaria", async (req, res) => {
     const payload = {
       draft_id: draft.id,
       source_draft_id: draft.draft_number || draft.id,
+      client_ref: String(draft.client_ref || "").trim() || null,
       currency: draft.currency || "EUR",
       issue_date: new Date().toISOString().slice(0, 10),
       notes_public: draft.notes || null,
@@ -206,6 +207,9 @@ router.post("/:id/push-to-segretaria", async (req, res) => {
         discount_total_cents: 0,
       },
     };
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(draft.client_ref || "").trim())) {
+      payload.client_id = String(draft.client_ref || "").trim();
+    }
 
     const connectionRow = await loadBestSegretariaConnection(db, workspaceId).catch(() => null);
     const config = resolveSegretariaConfig({ dbConnection: connectionRow, env: process.env });

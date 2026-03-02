@@ -26,8 +26,57 @@ function ensureFeatureEnabled(req, res, next) {
   });
 }
 
-router.get("/meta", (_req, res) => {
-  return res.json({ ok: true, enabled: inventorySheetsEnabled() });
+router.get("/meta", async (req, res) => {
+  const enabled = inventorySheetsEnabled();
+  if (!enabled) {
+    return res.json({
+      ok: true,
+      enabled: false,
+      known_tasks: [],
+      known_projects: [],
+    });
+  }
+
+  const { db, workspaceId } = req;
+  try {
+    await ensureSheetTables(db);
+    const [taskRows, projectRows] = await Promise.all([
+      db.query(
+        `SELECT DISTINCT task_id
+         FROM public.inventory_sheets
+         WHERE workspace_id=$1
+           AND task_id IS NOT NULL
+           AND btrim(task_id) <> ''
+         ORDER BY task_id ASC
+         LIMIT 300`,
+        [workspaceId]
+      ),
+      db.query(
+        `SELECT DISTINCT project_id
+         FROM public.inventory_sheets
+         WHERE workspace_id=$1
+           AND project_id IS NOT NULL
+           AND btrim(project_id) <> ''
+         ORDER BY project_id ASC
+         LIMIT 300`,
+        [workspaceId]
+      ),
+    ]);
+
+    return res.json({
+      ok: true,
+      enabled: true,
+      known_tasks: (taskRows.rows || []).map((row) => row.task_id).filter(Boolean),
+      known_projects: (projectRows.rows || []).map((row) => row.project_id).filter(Boolean),
+    });
+  } catch (_) {
+    return res.json({
+      ok: true,
+      enabled: true,
+      known_tasks: [],
+      known_projects: [],
+    });
+  }
 });
 
 router.use(ensureFeatureEnabled);

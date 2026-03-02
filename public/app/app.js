@@ -25,6 +25,8 @@
     selectedDraft: null,
     segretariaClients: [],
     segretariaSuppliers: [],
+    segretariaTasks: [],
+    segretariaProjects: [],
     segretariaQuotes: [],
     activeWorkspaceId: null,
     activeUserId: null,
@@ -33,6 +35,8 @@
     sheets: [],
     currentSheetId: null,
     currentSheetDetail: null,
+    knownSheetTaskIds: [],
+    knownSheetProjectIds: [],
     sheetFilters: {
       status: "",
       taskId: "",
@@ -148,6 +152,8 @@
     sheetFilterProjectId: document.getElementById("sheetFilterProjectId"),
     sheetFilterDateFrom: document.getElementById("sheetFilterDateFrom"),
     sheetFilterDateTo: document.getElementById("sheetFilterDateTo"),
+    newSheetTaskId: document.getElementById("newSheetTaskId"),
+    newSheetProjectId: document.getElementById("newSheetProjectId"),
     newSheetForm: document.getElementById("newSheetForm"),
     newSheetMessage: document.getElementById("newSheetMessage"),
     sheetsList: document.getElementById("sheetsList"),
@@ -359,6 +365,93 @@
     return "Nessun collegamento";
   }
 
+  function shortId(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (raw.length <= 10) return raw;
+    return `${raw.slice(0, 8)}...`;
+  }
+
+  function uniqById(options) {
+    const seen = new Set();
+    const out = [];
+    (options || []).forEach((row) => {
+      const id = String(row?.id || "").trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      out.push({ id, label: String(row?.label || id).trim() || id });
+    });
+    return out;
+  }
+
+  function buildTaskOptions() {
+    const fromSegretaria = (state.segretariaTasks || []).map((row) => {
+      const id = String(row?.id || "").trim();
+      const title = String(row?.title || row?.name || "").trim();
+      return {
+        id,
+        label: title ? `${title} · ${shortId(id)}` : `Task ${shortId(id)}`,
+      };
+    });
+    const fromKnownIds = (state.knownSheetTaskIds || []).map((id) => ({
+      id: String(id || "").trim(),
+      label: `Task ${shortId(id)}`,
+    }));
+    const fromSheets = (state.sheets || [])
+      .map((sheet) => String(sheet?.task_id || "").trim())
+      .filter(Boolean)
+      .map((id) => ({ id, label: `Task ${shortId(id)}` }));
+    return uniqById([...fromSegretaria, ...fromKnownIds, ...fromSheets]);
+  }
+
+  function buildProjectOptions() {
+    const fromSegretaria = (state.segretariaProjects || []).map((row) => {
+      const id = String(row?.id || "").trim();
+      const name = String(row?.name || row?.title || "").trim();
+      return {
+        id,
+        label: name ? `${name} · ${shortId(id)}` : `Progetto ${shortId(id)}`,
+      };
+    });
+    const fromKnownIds = (state.knownSheetProjectIds || []).map((id) => ({
+      id: String(id || "").trim(),
+      label: `Progetto ${shortId(id)}`,
+    }));
+    const fromSheets = (state.sheets || [])
+      .map((sheet) => String(sheet?.project_id || "").trim())
+      .filter(Boolean)
+      .map((id) => ({ id, label: `Progetto ${shortId(id)}` }));
+    return uniqById([...fromSegretaria, ...fromKnownIds, ...fromSheets]);
+  }
+
+  function renderSelectOptions(selectEl, options, emptyLabel, preferredValue) {
+    if (!selectEl) return;
+    const current =
+      String(
+        preferredValue ||
+          selectEl.value ||
+          selectEl.dataset.prefill ||
+          ""
+      ).trim();
+    const list = uniqById(options);
+    if (current && !list.some((row) => row.id === current)) {
+      list.unshift({ id: current, label: `${current} (manuale)` });
+    }
+    selectEl.innerHTML = ['<option value="">' + esc(emptyLabel) + "</option>"]
+      .concat(list.map((row) => `<option value="${esc(row.id)}">${esc(row.label)}</option>`))
+      .join("");
+    if (current) selectEl.value = current;
+  }
+
+  function renderSheetLinkSelectors() {
+    const taskOptions = buildTaskOptions();
+    const projectOptions = buildProjectOptions();
+    renderSelectOptions(dom.sheetFilterTaskId, taskOptions, "Tutte le task", state.sheetFilters.taskId);
+    renderSelectOptions(dom.sheetFilterProjectId, projectOptions, "Tutti i progetti", state.sheetFilters.projectId);
+    renderSelectOptions(dom.newSheetTaskId, taskOptions, "Nessuna task");
+    renderSelectOptions(dom.newSheetProjectId, projectOptions, "Nessun progetto");
+  }
+
   function renderAccess() {
     const conn = state.connection || {};
     if (dom.accessWorkspace) dom.accessWorkspace.textContent = conn.workspace_id || state.activeWorkspaceId || "-";
@@ -394,18 +487,8 @@
     dom.quoteClientSuggestionsList.innerHTML = uniqueOptions
       .map((label) => `<option value="${esc(label)}"></option>`)
       .join("");
-
-    const quick = uniqueOptions.slice(0, 8);
-    if (!quick.length) {
-      dom.quoteClientQuickSuggestions.innerHTML = '<span class="muted">Nessun cliente suggerito.</span>';
-      return;
-    }
-    dom.quoteClientQuickSuggestions.innerHTML = quick
-      .map(
-        (label) =>
-          `<button type="button" class="btn btn-sm" data-action="pick-quote-client" data-value="${esc(label)}">${esc(label)}</button>`
-      )
-      .join("");
+    dom.quoteClientQuickSuggestions.innerHTML = "";
+    dom.quoteClientQuickSuggestions.classList.add("hidden");
   }
 
   function buildApiHeaders(inputHeaders) {
@@ -1001,13 +1084,18 @@
     try {
       const body = await api("/api/inventory/sheets/meta");
       state.inventorySheetsEnabled = body.enabled !== false;
+      state.knownSheetTaskIds = Array.isArray(body.known_tasks) ? body.known_tasks.filter(Boolean) : [];
+      state.knownSheetProjectIds = Array.isArray(body.known_projects) ? body.known_projects.filter(Boolean) : [];
     } catch (err) {
       state.inventorySheetsEnabled = false;
+      state.knownSheetTaskIds = [];
+      state.knownSheetProjectIds = [];
       if (String(err.message || "").includes("FEATURE_DISABLED")) {
         state.inventorySheetsEnabled = false;
       }
     }
     applyRoleGates();
+    renderSheetLinkSelectors();
   }
 
   async function loadConnection() {
@@ -1054,25 +1142,31 @@
       });
       state.segretariaClients = Array.isArray(body.clients) ? body.clients : [];
       state.segretariaSuppliers = Array.isArray(body.suppliers) ? body.suppliers : [];
+      state.segretariaTasks = Array.isArray(body.tasks) ? body.tasks : [];
+      state.segretariaProjects = Array.isArray(body.projects) ? body.projects : [];
       state.segretariaQuotes = Array.isArray(body.quotes) ? body.quotes : [];
       renderClients();
       renderSuppliers();
       renderSegretariaQuotes();
       renderQuoteClientSuggestions();
+      renderSheetLinkSelectors();
       renderOverview();
       setText(
         dom.segretariaDataMessage,
-        `Dati aggiornati: ${state.segretariaClients.length} clienti, ${state.segretariaSuppliers.length} fornitori, ${state.segretariaQuotes.length} preventivi.`,
+        `Dati aggiornati: ${state.segretariaClients.length} clienti, ${state.segretariaSuppliers.length} fornitori, ${state.segretariaTasks.length} task, ${state.segretariaProjects.length} progetti.`,
         false
       );
     } catch (err) {
       state.segretariaClients = [];
       state.segretariaSuppliers = [];
+      state.segretariaTasks = [];
+      state.segretariaProjects = [];
       state.segretariaQuotes = [];
       renderClients();
       renderSuppliers();
       renderSegretariaQuotes();
       renderQuoteClientSuggestions();
+      renderSheetLinkSelectors();
       renderOverview();
       setText(dom.segretariaDataMessage, `Sync Segretaria non disponibile: ${String(err.message || err)}`, true);
     }
@@ -1141,6 +1235,7 @@
       const body = await api(`/api/inventory/sheets${buildSheetsQuery()}`);
       state.sheets = Array.isArray(body.sheets) ? body.sheets : [];
       renderSheetsList();
+      renderSheetLinkSelectors();
     } catch (err) {
       if (String(err.message || "").includes("FEATURE_DISABLED")) {
         state.inventorySheetsEnabled = false;
@@ -1149,6 +1244,7 @@
       setText(dom.newSheetMessage, `Errore caricamento schede: ${String(err.message || err)}`, true);
       state.sheets = [];
       renderSheetsList();
+      renderSheetLinkSelectors();
     }
   }
 
@@ -2013,13 +2109,6 @@
       }
     });
 
-    dom.quoteClientQuickSuggestions?.addEventListener("click", (event) => {
-      const button = event.target.closest('button[data-action="pick-quote-client"]');
-      if (!button || !dom.quoteClientRefInput) return;
-      dom.quoteClientRefInput.value = String(button.dataset.value || "");
-      dom.quoteClientRefInput.focus();
-    });
-
     dom.sheetsList?.addEventListener("click", async (event) => {
       const button = event.target.closest('button[data-action="open-sheet"]');
       if (!button) return;
@@ -2205,19 +2294,14 @@
     if (queryTaskId) {
       state.sheetFilters.taskId = queryTaskId;
       if (dom.sheetFilterTaskId) dom.sheetFilterTaskId.value = queryTaskId;
-      if (dom.newSheetForm) {
-        const el = dom.newSheetForm.querySelector('[name="task_id"]');
-        if (el) el.value = queryTaskId;
-      }
+      if (dom.newSheetTaskId) dom.newSheetTaskId.dataset.prefill = queryTaskId;
     }
     if (queryProjectId) {
       state.sheetFilters.projectId = queryProjectId;
       if (dom.sheetFilterProjectId) dom.sheetFilterProjectId.value = queryProjectId;
-      if (dom.newSheetForm) {
-        const el = dom.newSheetForm.querySelector('[name="project_id"]');
-        if (el) el.value = queryProjectId;
-      }
+      if (dom.newSheetProjectId) dom.newSheetProjectId.dataset.prefill = queryProjectId;
     }
+    renderSheetLinkSelectors();
     renderManualParamsMask();
     if (queryTab) activeTab(queryTab);
     if (queryToken) activeTab("settings");

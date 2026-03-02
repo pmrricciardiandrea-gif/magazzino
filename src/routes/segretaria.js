@@ -70,6 +70,8 @@ router.post("/snapshot", async (req, res) => {
       workspace_id: body.workspace_id || workspaceForSegretaria,
       clients: Array.isArray(body.clients) ? body.clients : [],
       suppliers: Array.isArray(body.suppliers) ? body.suppliers : [],
+      tasks: Array.isArray(body.tasks) ? body.tasks : [],
+      projects: Array.isArray(body.projects) ? body.projects : [],
       quotes: canAccessQuotes && Array.isArray(body.quotes) ? body.quotes : [],
       counts: body.counts || null,
     });
