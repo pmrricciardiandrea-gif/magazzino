@@ -61,6 +61,7 @@
 
   const dom = {
     tabsNav: document.getElementById("tabsNav"),
+    mobileTabsNav: document.getElementById("mobileTabsNav"),
     quotesTabButton: document.querySelector('.tab[data-tab="quotes"]'),
     quotesPanel: document.querySelector('.tab-panel[data-panel="quotes"]'),
     sheetsTabButton: document.querySelector('.tab[data-tab="sheets"]'),
@@ -1066,11 +1067,15 @@
 
   function applyRoleGates() {
     const allowed = canAccessQuotes();
-    if (dom.quotesTabButton) dom.quotesTabButton.classList.toggle("hidden", !allowed);
+    document.querySelectorAll('.tab[data-tab="quotes"]').forEach((el) => {
+      el.classList.toggle("hidden", !allowed);
+    });
     if (dom.quotesPanel) dom.quotesPanel.classList.toggle("hidden", !allowed);
     if (dom.kpiDraftsCard) dom.kpiDraftsCard.classList.toggle("hidden", !allowed);
     if (dom.kpiSegretariaQuotesCard) dom.kpiSegretariaQuotesCard.classList.toggle("hidden", !allowed);
-    if (dom.sheetsTabButton) dom.sheetsTabButton.classList.toggle("hidden", !canUseInventorySheets());
+    document.querySelectorAll('.tab[data-tab="sheets"]').forEach((el) => {
+      el.classList.toggle("hidden", !canUseInventorySheets());
+    });
     if (dom.sheetsPanel) dom.sheetsPanel.classList.toggle("hidden", !canUseInventorySheets());
     if (!allowed && document.querySelector('.tab[data-tab="quotes"].is-active')) {
       activeTab("overview");
@@ -1810,11 +1815,15 @@
   }
 
   function bindEvents() {
-    dom.tabsNav?.addEventListener("click", (event) => {
-      const target = event.target.closest(".tab");
-      if (!target) return;
-      activeTab(target.dataset.tab);
-    });
+    const bindTabNav = (navEl) => {
+      navEl?.addEventListener("click", (event) => {
+        const target = event.target.closest(".tab");
+        if (!target) return;
+        activeTab(target.dataset.tab);
+      });
+    };
+    bindTabNav(dom.tabsNav);
+    bindTabNav(dom.mobileTabsNav);
 
     dom.pwaInstallBtn?.addEventListener("click", () => {
       promptInstallPwa().catch(() => {});

@@ -175,7 +175,7 @@
                     <span class="label">Seleziona cliente</span>
                     <input class="input" name="client_ref" id="quoteClientRefInput" list="quoteClientSuggestionsList" placeholder="Scrivi o scegli un cliente..." />
                     <datalist id="quoteClientSuggestionsList"></datalist>
-                    <div id="quoteClientQuickSuggestions" class="quote-suggestions"></div>
+                    <div id="quoteClientQuickSuggestions" class="quote-suggestions hidden"></div>
                   </label>
                   <label class="checkbox">
                     <input type="checkbox" name="reserve_stock" />
@@ -659,6 +659,17 @@
         </div>
       </div>
     </div>
+
+    <nav id="mobileTabsNav" class="mobile-tabs-bar" aria-label="Navigazione mobile">
+      <button class="tab is-active" data-tab="overview">Panoramica</button>
+      <button class="tab" data-tab="quotes">Preventivi</button>
+      <button class="tab" data-tab="clients">Clienti</button>
+      <button class="tab" data-tab="suppliers">Fornitori</button>
+      <button class="tab" data-tab="items">Articoli</button>
+      <button class="tab" data-tab="stock">Stock</button>
+      <button class="tab" data-tab="sheets">Schede</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
 
     <script src="/app/app.js"></script>
   </body>
