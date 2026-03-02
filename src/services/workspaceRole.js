@@ -1,18 +1,18 @@
 "use strict";
 
 function normalizeWorkspaceRole(value) {
-  const role = String(value || "")
-    .trim()
-    .toUpperCase();
+  const role = String(value || "").trim().toUpperCase();
+  if (!role) return null;
   if (["ADMIN", "OWNER", "SUPERADMIN"].includes(role)) return "ADMIN";
   if (["AMMINISTRAZIONE", "ADMINISTRAZIONE", "FINANCE", "ACCOUNTING"].includes(role)) return "AMMINISTRAZIONE";
   if (["COMMERCIALE", "SALES"].includes(role)) return "COMMERCIALE";
   if (["VIEWER", "READONLY", "READ_ONLY"].includes(role)) return "VIEWER";
-  return role || "MEMBER";
+  return role;
 }
 
 function canAccessQuotesRole(value) {
   const role = normalizeWorkspaceRole(value);
+  if (!role) return true;
   return role === "ADMIN" || role === "AMMINISTRAZIONE" || role === "COMMERCIALE";
 }
 
@@ -45,4 +45,3 @@ module.exports = {
   resolveWorkspaceRole,
   requireQuotesAccess,
 };
-

@@ -22,15 +22,15 @@
             <p>Add-on collegato a Segretaria AI</p>
           </div>
           <nav id="tabsNav" class="sidebar-nav">
-            <button class="tab is-active" data-tab="overview">Panoramica</button>
-            <button class="tab" data-tab="quotes">Preventivi</button>
-            <button class="tab" data-tab="clients">Clienti</button>
-            <button class="tab" data-tab="suppliers">Fornitori</button>
-            <button class="tab" data-tab="items">Articoli</button>
-            <button class="tab" data-tab="stock">Stock</button>
-            <button class="tab" data-tab="sheets">Schede Articoli</button>
+            <button class="tab is-active" data-tab="overview"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg></span><span>Panoramica</span></button>
+            <button class="tab" data-tab="quotes"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/></svg></span><span>Preventivi</span></button>
+            <button class="tab" data-tab="clients"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.6-2.5 4.1-3.8 7-3.8S17.4 16.5 19 19"/></svg></span><span>Clienti</span></button>
+            <button class="tab" data-tab="suppliers"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 12h18"/></svg></span><span>Fornitori</span></button>
+            <button class="tab" data-tab="items"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7l8 4 8-4-8-4Z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg></span><span>Articoli</span></button>
+            <button class="tab" data-tab="stock"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 20h16"/><path d="M7 16v-5M12 16V8m5 8v-3"/></svg></span><span>Stock</span></button>
+            <button class="tab" data-tab="sheets"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 11h6M9 15h4"/></svg></span><span>Schede Articoli</span></button>
             <div class="sidebar-sep"></div>
-            <button class="tab tab-settings" data-tab="settings">Settings</button>
+            <button class="tab tab-settings" data-tab="settings"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.1-1.8-3.1-2.2.8a7 7 0 0 0-1.7-1l-.3-2.3h-3.6l-.3 2.3a7 7 0 0 0-1.7 1l-2.2-.8L3.1 9.8 5.1 11a7 7 0 0 0 0 2l-2 1.2 1.8 3.1 2.2-.8a7 7 0 0 0 1.7 1l.3 2.3h3.6l.3-2.3a7 7 0 0 0 1.7-1l2.2.8 1.8-3.1-2-1.2c.1-.3.1-.7.1-1Z"/></svg></span><span>Settings</span></button>
           </nav>
         </aside>
 
@@ -204,7 +204,7 @@
             <div class="card mt-12">
               <h3>Preventivi in Segretaria</h3>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Numero</th>
@@ -235,7 +235,7 @@
                 </div>
               </div>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Nome</th>
@@ -261,7 +261,7 @@
                 </div>
               </div>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Nome</th>
@@ -333,7 +333,7 @@
                 </div>
               </div>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Anteprima</th>
@@ -398,7 +398,7 @@
             <div class="card mt-12">
               <h3>Livelli stock</h3>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Magazzino</th>
@@ -416,7 +416,7 @@
             <div class="card mt-12">
               <h3>Movimenti recenti</h3>
               <div class="table-wrap">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Data</th>
@@ -557,7 +557,7 @@
               </div>
 
               <div class="table-wrap mt-12">
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Articolo</th>
@@ -573,7 +573,7 @@
 
               <div class="table-wrap mt-12">
                 <h4>Movimenti generati</h4>
-                <table class="table">
+                <table class="table mobile-card-table">
                   <thead>
                     <tr>
                       <th>Data</th>
@@ -661,14 +661,14 @@
     </div>
 
     <nav id="mobileTabsNav" class="mobile-tabs-bar" aria-label="Navigazione mobile">
-      <button class="tab is-active" data-tab="overview">Panoramica</button>
-      <button class="tab" data-tab="quotes">Preventivi</button>
-      <button class="tab" data-tab="clients">Clienti</button>
-      <button class="tab" data-tab="suppliers">Fornitori</button>
-      <button class="tab" data-tab="items">Articoli</button>
-      <button class="tab" data-tab="stock">Stock</button>
-      <button class="tab" data-tab="sheets">Schede</button>
-      <button class="tab" data-tab="settings">Settings</button>
+      <button class="tab is-active" data-tab="overview"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg></span><span>Panoramica</span></button>
+      <button class="tab" data-tab="quotes"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/></svg></span><span>Preventivi</span></button>
+      <button class="tab" data-tab="clients"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.6-2.5 4.1-3.8 7-3.8S17.4 16.5 19 19"/></svg></span><span>Clienti</span></button>
+      <button class="tab" data-tab="suppliers"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 12h18"/></svg></span><span>Fornitori</span></button>
+      <button class="tab" data-tab="items"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7l8 4 8-4-8-4Z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg></span><span>Articoli</span></button>
+      <button class="tab" data-tab="stock"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 20h16"/><path d="M7 16v-5M12 16V8m5 8v-3"/></svg></span><span>Stock</span></button>
+      <button class="tab" data-tab="sheets"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 2h6v4H9z"/><path d="M9 11h6M9 15h4"/></svg></span><span>Schede</span></button>
+      <button class="tab" data-tab="settings"><span class="tab-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.1-1.8-3.1-2.2.8a7 7 0 0 0-1.7-1l-.3-2.3h-3.6l-.3 2.3a7 7 0 0 0-1.7 1l-2.2-.8L3.1 9.8 5.1 11a7 7 0 0 0 0 2l-2 1.2 1.8 3.1 2.2-.8a7 7 0 0 0 1.7 1l.3 2.3h3.6l.3-2.3a7 7 0 0 0 1.7-1l2.2.8 1.8-3.1-2-1.2c.1-.3.1-.7.1-1Z"/></svg></span><span>Settings</span></button>
     </nav>
 
     <script src="/app/app.js"></script>

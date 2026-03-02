@@ -179,18 +179,18 @@
   }
 
   function normalizeWorkspaceRole(value) {
-    const role = String(value || "")
-      .trim()
-      .toUpperCase();
+    const role = String(value || "").trim().toUpperCase();
+    if (!role) return null;
     if (["ADMIN", "OWNER", "SUPERADMIN"].includes(role)) return "ADMIN";
     if (["AMMINISTRAZIONE", "ADMINISTRAZIONE", "FINANCE", "ACCOUNTING"].includes(role)) return "AMMINISTRAZIONE";
     if (["COMMERCIALE", "SALES"].includes(role)) return "COMMERCIALE";
     if (["VIEWER", "READONLY", "READ_ONLY"].includes(role)) return "VIEWER";
-    return role || "MEMBER";
+    return role;
   }
 
   function canAccessQuotesRole(value) {
     const role = normalizeWorkspaceRole(value);
+    if (!role) return true;
     return role === "ADMIN" || role === "AMMINISTRAZIONE" || role === "COMMERCIALE";
   }
 
@@ -347,7 +347,9 @@
 
   function loadWorkspaceRoleFromStorage() {
     try {
-      const role = normalizeWorkspaceRole(window.localStorage.getItem(WORKSPACE_ROLE_STORAGE_KEY));
+      const raw = String(window.localStorage.getItem(WORKSPACE_ROLE_STORAGE_KEY) || "").trim();
+      if (!raw) return;
+      const role = normalizeWorkspaceRole(raw);
       if (role) state.workspaceRole = role;
     } catch (_) {}
   }
@@ -1068,13 +1070,18 @@
   function applyRoleGates() {
     const allowed = canAccessQuotes();
     document.querySelectorAll('.tab[data-tab="quotes"]').forEach((el) => {
-      el.classList.toggle("hidden", !allowed);
+      el.classList.remove("hidden");
+      el.classList.toggle("is-disabled", !allowed);
+      el.setAttribute("aria-disabled", allowed ? "false" : "true");
     });
     if (dom.quotesPanel) dom.quotesPanel.classList.toggle("hidden", !allowed);
     if (dom.kpiDraftsCard) dom.kpiDraftsCard.classList.toggle("hidden", !allowed);
     if (dom.kpiSegretariaQuotesCard) dom.kpiSegretariaQuotesCard.classList.toggle("hidden", !allowed);
     document.querySelectorAll('.tab[data-tab="sheets"]').forEach((el) => {
-      el.classList.toggle("hidden", !canUseInventorySheets());
+      const enabled = canUseInventorySheets();
+      el.classList.remove("hidden");
+      el.classList.toggle("is-disabled", !enabled);
+      el.setAttribute("aria-disabled", enabled ? "false" : "true");
     });
     if (dom.sheetsPanel) dom.sheetsPanel.classList.toggle("hidden", !canUseInventorySheets());
     if (!allowed && document.querySelector('.tab[data-tab="quotes"].is-active')) {
@@ -1320,11 +1327,11 @@
       .map((row) => {
         return `
           <tr>
-            <td>${esc(row.name || "-")}</td>
-            <td>${esc(row.company || "-")}</td>
-            <td>${esc(row.email || "-")}</td>
-            <td>${esc(row.phone || "-")}</td>
-            <td>${esc([row.address, row.city].filter(Boolean).join(", ") || "-")}</td>
+            <td data-label="Nome">${esc(row.name || "-")}</td>
+            <td data-label="Azienda">${esc(row.company || "-")}</td>
+            <td data-label="Email">${esc(row.email || "-")}</td>
+            <td data-label="Telefono">${esc(row.phone || "-")}</td>
+            <td data-label="Indirizzo">${esc([row.address, row.city].filter(Boolean).join(", ") || "-")}</td>
           </tr>
         `;
       })
@@ -1340,11 +1347,11 @@
       .map((row) => {
         return `
           <tr>
-            <td>${esc(row.name || "-")}</td>
-            <td>${esc(row.company || "-")}</td>
-            <td>${esc(row.email || "-")}</td>
-            <td>${esc(row.phone || "-")}</td>
-            <td>${esc(row.status || "-")}</td>
+            <td data-label="Nome">${esc(row.name || "-")}</td>
+            <td data-label="Azienda">${esc(row.company || "-")}</td>
+            <td data-label="Email">${esc(row.email || "-")}</td>
+            <td data-label="Telefono">${esc(row.phone || "-")}</td>
+            <td data-label="Stato">${esc(row.status || "-")}</td>
           </tr>
         `;
       })
@@ -1373,11 +1380,11 @@
         const openUrl = quoteOpenUrl(row);
         return `
           <tr>
-            <td>${esc(row.number || row.id)}</td>
-            <td>${esc(row.status || "-")}</td>
-            <td>${esc(row.source || "-")}</td>
-            <td>${esc(formatCents(row.total_cents))}</td>
-            <td>
+            <td data-label="Numero">${esc(row.number || row.id)}</td>
+            <td data-label="Stato">${esc(row.status || "-")}</td>
+            <td data-label="Origine">${esc(row.source || "-")}</td>
+            <td data-label="Totale">${esc(formatCents(row.total_cents))}</td>
+            <td data-label="Azione">
               ${
                 openUrl
                   ? `<a class="btn btn-sm" target="_blank" rel="noreferrer" href="${esc(openUrl)}">Apri</a>`
@@ -1400,12 +1407,12 @@
         const imageUrl = getItemPreviewImage(item);
         return `
           <tr>
-            <td>${imageUrl ? `<img class="item-thumb" src="${esc(imageUrl)}" alt="${esc(item.name || "Articolo")}" loading="lazy" />` : '<span class="item-thumb-placeholder">IMG</span>'}</td>
-            <td>${esc(item.name)}</td>
-            <td>${esc(item.sku || "-")}</td>
-            <td>${esc(item.item_type || "-")}</td>
-            <td>${esc(item.unit_label || "-")}</td>
-            <td><span class="pill ${item.is_active ? "pill-ok" : "pill-off"}">${item.is_active ? "Attivo" : "Disattivo"}</span></td>
+            <td data-label="Anteprima">${imageUrl ? `<img class="item-thumb" src="${esc(imageUrl)}" alt="${esc(item.name || "Articolo")}" loading="lazy" />` : '<span class="item-thumb-placeholder">IMG</span>'}</td>
+            <td data-label="Nome">${esc(item.name)}</td>
+            <td data-label="SKU">${esc(item.sku || "-")}</td>
+            <td data-label="Tipo">${esc(item.item_type || "-")}</td>
+            <td data-label="Unità">${esc(item.unit_label || "-")}</td>
+            <td data-label="Stato"><span class="pill ${item.is_active ? "pill-ok" : "pill-off"}">${item.is_active ? "Attivo" : "Disattivo"}</span></td>
           </tr>
         `;
       })
@@ -1441,11 +1448,11 @@
       .map((lvl) => {
         return `
           <tr>
-            <td>${esc(lvl.warehouse_name || "-")}</td>
-            <td>${esc(lvl.item_name || "-")}</td>
-            <td><b>${esc(lvl.available)}</b></td>
-            <td>${esc(lvl.on_hand)}</td>
-            <td>${esc(lvl.reserved)}</td>
+            <td data-label="Magazzino">${esc(lvl.warehouse_name || "-")}</td>
+            <td data-label="Articolo">${esc(lvl.item_name || "-")}</td>
+            <td data-label="Disponibile"><b>${esc(lvl.available)}</b></td>
+            <td data-label="Giacenza">${esc(lvl.on_hand)}</td>
+            <td data-label="Riservato">${esc(lvl.reserved)}</td>
           </tr>
         `;
       })
@@ -1461,11 +1468,11 @@
       .map((mv) => {
         return `
           <tr>
-            <td>${esc(formatDateTime(mv.created_at))}</td>
-            <td>${esc(mv.movement_type)}</td>
-            <td>${esc(mv.warehouse_name || "-")}</td>
-            <td>${esc(mv.item_name || "-")}</td>
-            <td>${esc(mv.quantity)}</td>
+            <td data-label="Data">${esc(formatDateTime(mv.created_at))}</td>
+            <td data-label="Tipo">${esc(mv.movement_type)}</td>
+            <td data-label="Magazzino">${esc(mv.warehouse_name || "-")}</td>
+            <td data-label="Articolo">${esc(mv.item_name || "-")}</td>
+            <td data-label="Qtà">${esc(mv.quantity)}</td>
           </tr>
         `;
       })
@@ -1537,11 +1544,11 @@
         .map((row) => {
           return `
             <tr>
-              <td>${esc(row.item_name || "-")}</td>
-              <td>${esc(row.item_sku || "-")}</td>
-              <td>${esc(row.qty)}</td>
-              <td>${esc(row.unit || "-")}</td>
-              <td>
+              <td data-label="Articolo">${esc(row.item_name || "-")}</td>
+              <td data-label="SKU">${esc(row.item_sku || "-")}</td>
+              <td data-label="Qtà">${esc(row.qty)}</td>
+              <td data-label="Unità">${esc(row.unit || "-")}</td>
+              <td data-label="Azione">
                 ${
                   isLocked
                     ? '<span class="muted">Read-only</span>'
@@ -1565,11 +1572,11 @@
         .map(
           (mv) => `
             <tr>
-              <td>${esc(formatDateTime(mv.created_at))}</td>
-              <td>${esc(mv.item_name || "-")}</td>
-              <td>${esc(mv.warehouse_name || "-")}</td>
-              <td>${esc(mv.movement_type || "-")}</td>
-              <td>${esc(mv.quantity || "-")}</td>
+              <td data-label="Data">${esc(formatDateTime(mv.created_at))}</td>
+              <td data-label="Articolo">${esc(mv.item_name || "-")}</td>
+              <td data-label="Magazzino">${esc(mv.warehouse_name || "-")}</td>
+              <td data-label="Tipo">${esc(mv.movement_type || "-")}</td>
+              <td data-label="Qtà">${esc(mv.quantity || "-")}</td>
             </tr>
           `
         )
@@ -1725,7 +1732,7 @@
         <p><b>Note:</b> ${esc(draft.notes || "-")}</p>
         <h4>Righe</h4>
         <div class="table-wrap">
-          <table class="table">
+          <table class="table mobile-card-table">
             <thead>
               <tr>
                 <th>Descrizione</th>
@@ -1743,12 +1750,12 @@
                       .map((line) => {
                         return `
                           <tr>
-                            <td>${esc(line.description)}</td>
-                            <td>${esc(line.quantity)}</td>
-                            <td>${esc(line.unit_label || "-")}</td>
-                            <td>${esc(formatCents(line.unit_price_cents))}</td>
-                            <td>${esc(line.vat_rate)}%</td>
-                            <td>${esc(formatCents(line.line_total_cents))}</td>
+                            <td data-label="Descrizione">${esc(line.description)}</td>
+                            <td data-label="Qtà">${esc(line.quantity)}</td>
+                            <td data-label="Unità">${esc(line.unit_label || "-")}</td>
+                            <td data-label="Prezzo">${esc(formatCents(line.unit_price_cents))}</td>
+                            <td data-label="IVA">${esc(line.vat_rate)}%</td>
+                            <td data-label="Totale">${esc(formatCents(line.line_total_cents))}</td>
                           </tr>
                         `;
                       })
