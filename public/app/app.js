@@ -96,8 +96,6 @@
     refreshSegretariaDataBtn: document.getElementById("refreshSegretariaDataBtn"),
     segretariaDataMessage: document.getElementById("segretariaDataMessage"),
     quoteClientRefInput: document.getElementById("quoteClientRefInput"),
-    quoteClientSuggestionsList: document.getElementById("quoteClientSuggestionsList"),
-    quoteClientQuickSuggestions: document.getElementById("quoteClientQuickSuggestions"),
     clientsSearchInput: document.getElementById("clientsSearchInput"),
     clientsSearchBtn: document.getElementById("clientsSearchBtn"),
     suppliersSearchInput: document.getElementById("suppliersSearchInput"),
@@ -481,17 +479,31 @@
   }
 
   function renderQuoteClientSuggestions() {
-    if (!dom.quoteClientSuggestionsList || !dom.quoteClientQuickSuggestions) return;
-    const options = (state.segretariaClients || [])
-      .map((client) => clientRefLabel(client))
-      .filter(Boolean);
-    const uniqueOptions = Array.from(new Set(options));
+    const selectEl = dom.quoteClientRefInput;
+    if (!selectEl) return;
+    const current = String(selectEl.value || "").trim();
 
-    dom.quoteClientSuggestionsList.innerHTML = uniqueOptions
-      .map((label) => `<option value="${esc(label)}"></option>`)
+    const list = [];
+    const seen = new Set();
+    (state.segretariaClients || []).forEach((client) => {
+      const label = clientRefLabel(client);
+      if (!label) return;
+      const value = String(client?.id || "").trim() || label;
+      if (seen.has(value)) return;
+      seen.add(value);
+      list.push({ value, label });
+    });
+
+    selectEl.innerHTML = ['<option value="">Nessun cliente</option>']
+      .concat(list.map((row) => `<option value="${esc(row.value)}">${esc(row.label)}</option>`))
       .join("");
-    dom.quoteClientQuickSuggestions.innerHTML = "";
-    dom.quoteClientQuickSuggestions.classList.add("hidden");
+
+    if (current && list.some((row) => row.value === current)) {
+      selectEl.value = current;
+    } else {
+      selectEl.value = "";
+    }
+
   }
 
   function buildApiHeaders(inputHeaders) {

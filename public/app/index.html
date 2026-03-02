@@ -173,9 +173,9 @@
                   </label>
                   <label>
                     <span class="label">Seleziona cliente</span>
-                    <input class="input" name="client_ref" id="quoteClientRefInput" list="quoteClientSuggestionsList" placeholder="Scrivi o scegli un cliente..." />
-                    <datalist id="quoteClientSuggestionsList"></datalist>
-                    <div id="quoteClientQuickSuggestions" class="quote-suggestions hidden"></div>
+                    <select class="input" name="client_ref" id="quoteClientRefInput">
+                      <option value="">Nessun cliente</option>
+                    </select>
                   </label>
                   <label class="checkbox">
                     <input type="checkbox" name="reserve_stock" />
