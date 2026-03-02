@@ -1480,7 +1480,11 @@
       const body = await api("/api/integration/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, exchange_url: exchangeUrl || undefined }),
+        body: JSON.stringify({
+          token,
+          exchange_url: exchangeUrl || undefined,
+          workspace_id: state.activeWorkspaceId || state.connection?.workspace_id || undefined,
+        }),
       });
       setActiveWorkspaceId(body.workspace_id || null);
       if (body.workspace_role) setWorkspaceRole(body.workspace_role);

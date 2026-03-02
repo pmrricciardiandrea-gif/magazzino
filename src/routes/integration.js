@@ -14,26 +14,64 @@ const router = express.Router();
 
 function resolveExchangeUrl({ body = {}, query = {} } = {}) {
   const direct = String(body.exchange_url || "").trim();
-  if (direct) return direct;
+  if (direct) return normalizeExchangeUrl(direct);
 
   const baseFromQuery = normalizeBaseUrl(query.segretaria_base_url);
   if (baseFromQuery) return `${baseFromQuery}/api/integrations/magazzino/connect/exchange`;
 
   const envDirect = String(process.env.SEGRETARIA_CONNECT_EXCHANGE_URL || "").trim();
-  if (envDirect) return envDirect;
+  if (envDirect) return normalizeExchangeUrl(envDirect);
 
   const envBase = normalizeBaseUrl(process.env.SEGRETARIA_BASE_URL);
   if (envBase) return `${envBase}/api/integrations/magazzino/connect/exchange`;
   return "";
 }
 
-async function exchangeConnectToken({ token, exchangeUrl }) {
+function normalizeExchangeUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  const lower = value.toLowerCase();
+  if (/\/api\/integrations\/magazzino\/connect\/exchange\/?$/.test(lower)) return value;
+  if (/\/api\/integrations\/magazzino\/connect\/?$/.test(lower)) return value.replace(/\/?$/, "/exchange");
+  if (/\/api\/admin\/integrations\/magazzino\/connect-url\/?$/.test(lower)) {
+    return value.replace(/\/api\/admin\/integrations\/magazzino\/connect-url\/?$/i, "/api/integrations/magazzino/connect/exchange");
+  }
+  const normalizedBase = normalizeBaseUrl(value);
+  if (normalizedBase) return `${normalizedBase}/api/integrations/magazzino/connect/exchange`;
+  return value;
+}
+
+function deriveFallbackExchangeUrl(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  const lower = value.toLowerCase();
+  if (lower.includes("/api/integrations/magazzino/connect/exchange")) return "";
+  if (lower.includes("/api/integrations/magazzino/connect")) {
+    return value.replace(/\/?$/, "/exchange");
+  }
+  if (lower.includes("/api/admin/integrations/magazzino/connect-url")) {
+    return value.replace(/\/api\/admin\/integrations\/magazzino\/connect-url\/?$/i, "/api/integrations/magazzino/connect/exchange");
+  }
+  return "";
+}
+
+async function exchangeConnectToken({ token, exchangeUrl, workspaceId = "" }) {
+  const workspaceHeader = String(workspaceId || "").trim();
+  const headers = { "Content-Type": "application/json" };
+  if (workspaceHeader) headers["x-workspace-id"] = workspaceHeader;
   const response = await fetch(exchangeUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ token }),
   });
   const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const fallbackUrl = deriveFallbackExchangeUrl(exchangeUrl);
+    const missingWs = String(payload?.error || "").toUpperCase() === "MISSING_WORKSPACE_ID";
+    if (fallbackUrl && fallbackUrl !== exchangeUrl && (response.status === 400 || response.status === 404 || missingWs)) {
+      return exchangeConnectToken({ token, exchangeUrl: fallbackUrl, workspaceId });
+    }
+  }
   if (!response.ok) {
     const err = new Error(payload?.details || payload?.error || `HTTP ${response.status}`);
     err.status = response.status;
@@ -44,7 +82,7 @@ async function exchangeConnectToken({ token, exchangeUrl }) {
   return payload || {};
 }
 
-async function handleConnect(db, { token, exchangeUrl }) {
+async function handleConnect(db, { token, exchangeUrl, workspaceId = "" }) {
   const cleanToken = String(token || "").trim();
   if (!cleanToken) {
     const err = new Error("token is required");
@@ -59,12 +97,16 @@ async function handleConnect(db, { token, exchangeUrl }) {
     throw err;
   }
 
-  const exchanged = await exchangeConnectToken({ token: cleanToken, exchangeUrl });
-  const workspaceId = String(exchanged.workspace_id || "").trim();
+  const exchanged = await exchangeConnectToken({
+    token: cleanToken,
+    exchangeUrl,
+    workspaceId,
+  });
+  const connectedWorkspaceId = String(exchanged.workspace_id || "").trim();
   const segretariaBaseUrl = normalizeBaseUrl(exchanged.segretaria_base_url || "");
   const apiKey = String(exchanged.credentials?.api_key || "").trim();
   const hmacSecret = String(exchanged.credentials?.hmac_secret || "").trim();
-  if (!workspaceId || !segretariaBaseUrl || !apiKey || !hmacSecret) {
+  if (!connectedWorkspaceId || !segretariaBaseUrl || !apiKey || !hmacSecret) {
     const err = new Error("Incomplete connect payload from Segretaria");
     err.status = 502;
     err.code = "CONNECT_PAYLOAD_INVALID";
@@ -72,14 +114,14 @@ async function handleConnect(db, { token, exchangeUrl }) {
   }
 
   const saved = await saveSegretariaConnection(db, {
-    workspaceId,
+    workspaceId: connectedWorkspaceId,
     segretariaBaseUrl,
     apiKey,
     hmacSecret,
     active: true,
   });
   return {
-    workspace_id: workspaceId,
+    workspace_id: connectedWorkspaceId,
     segretaria_base_url: saved.segretaria_base_url,
     api_key_prefix: apiKeyPrefix(saved.api_key),
     connected_at: saved.connected_at,
@@ -89,10 +131,12 @@ async function handleConnect(db, { token, exchangeUrl }) {
 
 router.post("/api/integration/connect", async (req, res) => {
   const exchangeUrl = resolveExchangeUrl({ body: req.body, query: req.query });
+  const workspaceId = String(req.workspaceId || req.body?.workspace_id || req.query?.workspace_id || "").trim();
   try {
     const result = await handleConnect(req.db, {
       token: req.body?.token,
       exchangeUrl,
+      workspaceId,
     });
     return res.json({ ok: true, ...result });
   } catch (err) {
