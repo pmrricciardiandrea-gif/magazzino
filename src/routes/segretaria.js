@@ -73,7 +73,12 @@ router.post("/snapshot", async (req, res) => {
       tasks: Array.isArray(body.tasks) ? body.tasks : [],
       projects: Array.isArray(body.projects) ? body.projects : [],
       quotes: canAccessQuotes && Array.isArray(body.quotes) ? body.quotes : [],
-      counts: body.counts || null,
+      counts: body.counts
+        ? {
+            ...body.counts,
+            quotes: canAccessQuotes ? Number(body.counts?.quotes || 0) : 0,
+          }
+        : null,
     });
   } catch (err) {
     return res.status(500).json({

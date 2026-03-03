@@ -586,6 +586,26 @@
                   <tbody id="sheetMovementsBody"></tbody>
                 </table>
               </div>
+
+              <div class="card mt-12">
+                <h4>Commenti interni</h4>
+                <form id="sheetCommentForm" class="stack">
+                  <label>
+                    <span class="label">Nuovo commento</span>
+                    <textarea id="sheetCommentBody" class="input" rows="2" placeholder="Scrivi un aggiornamento operativo..."></textarea>
+                  </label>
+                  <div class="actions">
+                    <button class="btn" type="submit">Aggiungi commento</button>
+                  </div>
+                </form>
+                <p id="sheetCommentMessage" class="muted"></p>
+                <div id="sheetCommentsList" class="stack"></div>
+              </div>
+
+              <div class="card mt-12">
+                <h4>Timeline modifiche</h4>
+                <div id="sheetTimelineList" class="stack"></div>
+              </div>
             </div>
           </section>
         </section>

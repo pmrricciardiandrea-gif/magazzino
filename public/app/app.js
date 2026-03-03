@@ -165,6 +165,11 @@
     sheetRowItemSelect: document.getElementById("sheetRowItemSelect"),
     sheetRowsBody: document.getElementById("sheetRowsBody"),
     sheetMovementsBody: document.getElementById("sheetMovementsBody"),
+    sheetCommentForm: document.getElementById("sheetCommentForm"),
+    sheetCommentBody: document.getElementById("sheetCommentBody"),
+    sheetCommentMessage: document.getElementById("sheetCommentMessage"),
+    sheetCommentsList: document.getElementById("sheetCommentsList"),
+    sheetTimelineList: document.getElementById("sheetTimelineList"),
   };
 
   function esc(value) {
@@ -188,8 +193,15 @@
 
   function canAccessQuotesRole(value) {
     const role = normalizeWorkspaceRole(value);
-    if (!role) return true;
+    if (!role) return false;
     return role === "ADMIN" || role === "AMMINISTRAZIONE" || role === "COMMERCIALE";
+  }
+
+  function canWriteWorksheetRole(value) {
+    const role = normalizeWorkspaceRole(value);
+    if (!role) return true;
+    if (role === "VIEWER") return false;
+    return role === "ADMIN" || role === "AMMINISTRAZIONE" || role === "COMMERCIALE" || role === "MEMBER";
   }
 
   function formatDateTime(value) {
@@ -358,6 +370,10 @@
 
   function canUseInventorySheets() {
     return state.inventorySheetsEnabled !== false;
+  }
+
+  function canWriteWorksheet() {
+    return canWriteWorksheetRole(state.workspaceRole);
   }
 
   function fmtSheetLink(taskId, projectId) {
@@ -1082,8 +1098,8 @@
   function applyRoleGates() {
     const allowed = canAccessQuotes();
     document.querySelectorAll('.tab[data-tab="quotes"]').forEach((el) => {
-      el.classList.remove("hidden");
-      el.classList.toggle("is-disabled", !allowed);
+      el.classList.toggle("hidden", !allowed);
+      el.classList.toggle("is-disabled", false);
       el.setAttribute("aria-disabled", allowed ? "false" : "true");
     });
     if (dom.quotesPanel) dom.quotesPanel.classList.toggle("hidden", !allowed);
@@ -1531,6 +1547,7 @@
     }
 
     const isLocked = String(sheet.status || "").toUpperCase() === "LOCKED";
+    const canEditSheet = canWriteWorksheet();
     dom.sheetDetailCard.classList.remove("hidden");
     dom.sheetDetailMeta.innerHTML = `
       <p><b>ID:</b> ${esc(sheet.id)}</p>
@@ -1540,11 +1557,11 @@
       <p><b>Note:</b> ${esc(sheet.notes || "-")}</p>
       <p><b>Creata:</b> ${esc(formatDateTime(sheet.created_at))} · <b>Aggiornata:</b> ${esc(formatDateTime(sheet.updated_at))}</p>
     `;
-    if (dom.sheetLockBtn) dom.sheetLockBtn.disabled = isLocked;
+    if (dom.sheetLockBtn) dom.sheetLockBtn.disabled = isLocked || !canEditSheet;
     if (dom.sheetRowForm) {
       const controls = dom.sheetRowForm.querySelectorAll("input,select,button");
       controls.forEach((el) => {
-        el.disabled = isLocked;
+        el.disabled = !canEditSheet;
       });
     }
 
@@ -1562,8 +1579,8 @@
               <td data-label="Unità">${esc(row.unit || "-")}</td>
               <td data-label="Azione">
                 ${
-                  isLocked
-                    ? '<span class="muted">Read-only</span>'
+                  !canEditSheet
+                    ? '<span class="muted">Solo lettura</span>'
                     : `<div class="actions">
                          <button class="btn btn-sm" data-action="sheet-row-edit" data-row-id="${esc(row.id)}">Modifica qtà</button>
                          <button class="btn btn-sm btn-danger-soft" data-action="sheet-row-delete" data-row-id="${esc(row.id)}">Elimina</button>
@@ -1593,6 +1610,54 @@
           `
         )
         .join("");
+    }
+
+    const comments = Array.isArray(detail?.comments) ? detail.comments : [];
+    if (dom.sheetCommentsList) {
+      if (!comments.length) {
+        dom.sheetCommentsList.innerHTML = '<p class="muted">Nessun commento.</p>';
+      } else {
+        dom.sheetCommentsList.innerHTML = comments
+          .map(
+            (comment) => `
+              <article class="mini-card">
+                <div>
+                  <p class="mini-sub"><b>${esc(comment.author_user_id || "utente")}</b> · ${esc(formatDateTime(comment.created_at))}</p>
+                  <p class="mini-title">${esc(comment.body_text || "-")}</p>
+                </div>
+              </article>
+            `
+          )
+          .join("");
+      }
+    }
+
+    const timeline = Array.isArray(detail?.timeline) ? detail.timeline : [];
+    if (dom.sheetTimelineList) {
+      if (!timeline.length) {
+        dom.sheetTimelineList.innerHTML = '<p class="muted">Nessun evento.</p>';
+      } else {
+        dom.sheetTimelineList.innerHTML = timeline
+          .map(
+            (event) => `
+              <article class="mini-card">
+                <div>
+                  <p class="mini-title">${esc(event.action || "evento")}</p>
+                  <p class="mini-sub">${esc(formatDateTime(event.created_at))} · ${esc(event.actor_user_id || "sistema")}</p>
+                  <p class="muted">${esc(event.changes_json ? JSON.stringify(event.changes_json) : "-")}</p>
+                </div>
+              </article>
+            `
+          )
+          .join("");
+      }
+    }
+
+    if (dom.sheetCommentBody) dom.sheetCommentBody.disabled = !canEditSheet;
+    if (dom.sheetCommentForm) {
+      dom.sheetCommentForm.querySelectorAll("button").forEach((btn) => {
+        btn.disabled = !canEditSheet;
+      });
     }
   }
 
@@ -2245,6 +2310,10 @@
 
     dom.sheetRowForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (!canWriteWorksheet()) {
+        setText(dom.sheetDetailMessage, "Permessi insufficienti per modificare la scheda.", true);
+        return;
+      }
       if (!state.currentSheetId) {
         setText(dom.sheetDetailMessage, "Apri prima una scheda.", true);
         return;
@@ -2256,13 +2325,18 @@
         unit: String(fd.get("unit") || "").trim() || null,
       };
       try {
-        await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows`, {
+        const body = await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
         dom.sheetRowForm.reset();
-        setText(dom.sheetDetailMessage, "Riga aggiunta", false);
+        const synced = Number(body?.lock_sync?.movements_created || 0);
+        setText(
+          dom.sheetDetailMessage,
+          synced ? `Riga aggiunta · stock sincronizzato (${synced} movimenti)` : "Riga aggiunta",
+          false
+        );
         await loadSheetDetail(state.currentSheetId);
         await loadSheets();
       } catch (err) {
@@ -2275,6 +2349,10 @@
       const editBtn = event.target.closest('button[data-action="sheet-row-edit"]');
       const delBtn = event.target.closest('button[data-action="sheet-row-delete"]');
       if (!editBtn && !delBtn) return;
+      if (!canWriteWorksheet()) {
+        setText(dom.sheetDetailMessage, "Permessi insufficienti per modificare la scheda.", true);
+        return;
+      }
       const rowId = String((editBtn || delBtn)?.dataset.rowId || "").trim();
       if (!rowId) return;
 
@@ -2287,12 +2365,17 @@
           return;
         }
         try {
-          await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows/${encodeURIComponent(rowId)}`, {
+          const body = await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows/${encodeURIComponent(rowId)}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ qty }),
           });
-          setText(dom.sheetDetailMessage, "Riga aggiornata", false);
+          const synced = Number(body?.lock_sync?.movements_created || 0);
+          setText(
+            dom.sheetDetailMessage,
+            synced ? `Riga aggiornata · stock sincronizzato (${synced} movimenti)` : "Riga aggiornata",
+            false
+          );
           await loadSheetDetail(state.currentSheetId);
           await loadSheets();
         } catch (err) {
@@ -2304,10 +2387,15 @@
       if (delBtn) {
         if (!window.confirm("Eliminare questa riga?")) return;
         try {
-          await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows/${encodeURIComponent(rowId)}`, {
+          const body = await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/rows/${encodeURIComponent(rowId)}`, {
             method: "DELETE",
           });
-          setText(dom.sheetDetailMessage, "Riga eliminata", false);
+          const synced = Number(body?.lock_sync?.movements_created || 0);
+          setText(
+            dom.sheetDetailMessage,
+            synced ? `Riga eliminata · stock sincronizzato (${synced} movimenti)` : "Riga eliminata",
+            false
+          );
           await loadSheetDetail(state.currentSheetId);
           await loadSheets();
         } catch (err) {
@@ -2317,6 +2405,10 @@
     });
 
     dom.sheetLockBtn?.addEventListener("click", async () => {
+      if (!canWriteWorksheet()) {
+        setText(dom.sheetDetailMessage, "Permessi insufficienti per fare lock della scheda.", true);
+        return;
+      }
       if (!state.currentSheetId) return;
       if (!window.confirm("Confermare LOCK della scheda? Verranno creati movimenti OUT.")) return;
       dom.sheetLockBtn.disabled = true;
@@ -2335,6 +2427,35 @@
         setText(dom.sheetDetailMessage, String(err.message || err), true);
       } finally {
         dom.sheetLockBtn.disabled = false;
+      }
+    });
+
+    dom.sheetCommentForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!canWriteWorksheet()) {
+        setText(dom.sheetCommentMessage, "Permessi insufficienti per aggiungere commenti.", true);
+        return;
+      }
+      if (!state.currentSheetId) {
+        setText(dom.sheetCommentMessage, "Apri prima una scheda.", true);
+        return;
+      }
+      const body = String(dom.sheetCommentBody?.value || "").trim();
+      if (!body) {
+        setText(dom.sheetCommentMessage, "Commento vuoto.", true);
+        return;
+      }
+      try {
+        await api(`/api/inventory/sheets/${encodeURIComponent(state.currentSheetId)}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body_text: body }),
+        });
+        if (dom.sheetCommentBody) dom.sheetCommentBody.value = "";
+        setText(dom.sheetCommentMessage, "Commento aggiunto", false);
+        await loadSheetDetail(state.currentSheetId);
+      } catch (err) {
+        setText(dom.sheetCommentMessage, String(err.message || err), true);
       }
     });
 

@@ -17,6 +17,9 @@ docker compose up -d db
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_init.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/002_segretaria_connection.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/003_segretaria_connection_rename_from_segreteria.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/004_inventory_sheets_v1.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/005_items_images_v1.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/006_inventory_sheets_hardening_v1.sql
 ```
 
 4. Avvia app:
@@ -45,6 +48,12 @@ npm run dev
 - `POST /api/integration/connect` (token one-time da Segretaria)
 - `GET /api/integration/status`
 - `GET /connect?token=...` (auto-connect via browser)
+
+## PWA installabile
+
+- Apri `https://<dominio-magazzino>/app`.
+- Se il browser supporta `beforeinstallprompt`, vedrai il bottone **Installa app** in alto.
+- Su iOS: apri da Safari e usa **Condividi -> Aggiungi a schermata Home**.
 
 ## Push verso Segretaria
 

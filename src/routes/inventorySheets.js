@@ -1,19 +1,26 @@
 "use strict";
 
 const express = require("express");
-const { v4: uuidv4 } = require("uuid");
 const {
   inventorySheetsEnabled,
   ensureSheetTables,
   createInventorySheetDraft,
   addInventorySheetRow,
   lockInventorySheet,
-  assertSheetDraft,
+  fetchSheetById,
+  syncSheetStockMovements,
   ensureItemExists,
   makeError,
   normalizeText,
   normalizeQty,
+  appendSheetAuditEvent,
+  listSheetComments,
+  addSheetComment,
+  softDeleteSheetComment,
+  listSheetTimeline,
+  isLockedSheet,
 } = require("../services/inventorySheetsService");
+const { PERMISSIONS, requirePermission } = require("../services/workspaceRole");
 
 const router = express.Router();
 
@@ -24,6 +31,12 @@ function ensureFeatureEnabled(req, res, next) {
     error: "FEATURE_DISABLED",
     details: "Inventory sheets disabled (INVENTORY_SHEETS_V1=false)",
   });
+}
+
+function asLimit(value, fallback = 50) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(200, Math.floor(parsed)));
 }
 
 router.get("/meta", async (req, res) => {
@@ -46,7 +59,7 @@ router.get("/meta", async (req, res) => {
          FROM public.inventory_sheets
          WHERE workspace_id=$1
            AND task_id IS NOT NULL
-           AND btrim(task_id) <> ''
+           AND btrim(task_id::text) <> ''
          ORDER BY task_id ASC
          LIMIT 300`,
         [workspaceId]
@@ -56,7 +69,7 @@ router.get("/meta", async (req, res) => {
          FROM public.inventory_sheets
          WHERE workspace_id=$1
            AND project_id IS NOT NULL
-           AND btrim(project_id) <> ''
+           AND btrim(project_id::text) <> ''
          ORDER BY project_id ASC
          LIMIT 300`,
         [workspaceId]
@@ -80,6 +93,7 @@ router.get("/meta", async (req, res) => {
 });
 
 router.use(ensureFeatureEnabled);
+router.use(requirePermission(PERMISSIONS.WORKSHEET_READ, { message: "Permesso richiesto: WORKSHEET_READ" }));
 
 router.get("/", async (req, res) => {
   const { db, workspaceId } = req;
@@ -140,7 +154,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   try {
     await ensureSheetTables(db);
@@ -168,15 +182,7 @@ router.get("/:id", async (req, res) => {
   if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
   try {
     await ensureSheetTables(db);
-    const sheetRes = await db.query(
-      `SELECT *
-       FROM public.inventory_sheets
-       WHERE workspace_id=$1 AND id=$2
-       LIMIT 1`,
-      [workspaceId, sheetId]
-    );
-    if (!sheetRes.rowCount) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-    const sheet = sheetRes.rows[0];
+    const sheet = await fetchSheetById(db, workspaceId, sheetId);
 
     const rowsRes = await db.query(
       `SELECT r.*, i.name AS item_name, i.sku AS item_sku
@@ -198,12 +204,29 @@ router.get("/:id", async (req, res) => {
       [workspaceId, sheetId]
     );
 
+    const [comments, timeline] = await Promise.all([
+      listSheetComments(db, {
+        workspaceId,
+        sheetId,
+        limit: asLimit(req.query.comments_limit, 30),
+        offset: 0,
+      }),
+      listSheetTimeline(db, {
+        workspaceId,
+        sheetId,
+        limit: asLimit(req.query.timeline_limit, 60),
+        offset: 0,
+      }),
+    ]);
+
     return res.json({
       ok: true,
       sheet,
       rows: rowsRes.rows || [],
       movements: movementsRes.rows || [],
-      readonly: String(sheet.status || "").toUpperCase() !== "DRAFT",
+      comments,
+      timeline,
+      readonly: false,
     });
   } catch (err) {
     return res.status(err?.status || 500).json({
@@ -214,31 +237,85 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   const sheetId = String(req.params.id || "").trim();
   if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
   try {
     await ensureSheetTables(db);
-    await assertSheetDraft(db, workspaceId, sheetId);
+    await db.query("BEGIN");
+    const sheet = await fetchSheetById(db, workspaceId, sheetId, { lock: true });
 
     const title = normalizeText(req.body?.title);
     const notes = normalizeText(req.body?.notes);
     const taskId = normalizeText(req.body?.task_id);
     const projectId = normalizeText(req.body?.project_id);
+    const patchHasTitle = Object.prototype.hasOwnProperty.call(req.body || {}, "title");
+    const patchHasNotes = Object.prototype.hasOwnProperty.call(req.body || {}, "notes");
 
-    await db.query(
-      `UPDATE public.inventory_sheets
-       SET title=COALESCE($3, title),
-           notes=$4,
-           task_id=$5,
-           project_id=$6,
-           updated_at=now()
-       WHERE workspace_id=$1 AND id=$2`,
-      [workspaceId, sheetId, title, notes, taskId, projectId]
-    );
+    const updates = [];
+    const params = [workspaceId, sheetId];
+    let idx = 3;
+
+    if (patchHasTitle) {
+      if (!title) throw makeError("VALIDATION_ERROR", "title non può essere vuoto", 400);
+      if (title !== sheet.title) {
+        updates.push(`title=$${idx}`);
+        params.push(title);
+        idx += 1;
+      }
+    }
+    if (patchHasNotes && notes !== sheet.notes) {
+      updates.push(`notes=$${idx}`);
+      params.push(notes);
+      idx += 1;
+    }
+
+    const patchHasTask = Object.prototype.hasOwnProperty.call(req.body || {}, "task_id");
+    const patchHasProject = Object.prototype.hasOwnProperty.call(req.body || {}, "project_id");
+    if ((patchHasTask || patchHasProject) && isLockedSheet(sheet)) {
+      throw makeError("SHEET_LOCKED_LINKS", "Task/Project non modificabili su scheda LOCKED", 409);
+    }
+    if (patchHasTask && taskId !== sheet.task_id) {
+      updates.push(`task_id=$${idx}`);
+      params.push(taskId);
+      idx += 1;
+    }
+    if (patchHasProject && projectId !== sheet.project_id) {
+      updates.push(`project_id=$${idx}`);
+      params.push(projectId);
+      idx += 1;
+    }
+
+    const changes = {
+      before: { title: sheet.title, notes: sheet.notes, task_id: sheet.task_id, project_id: sheet.project_id },
+      after: { title: sheet.title, notes: sheet.notes, task_id: sheet.task_id, project_id: sheet.project_id },
+    };
+    if (updates.length) {
+      updates.push("updated_at=now()");
+      await db.query(
+        `UPDATE public.inventory_sheets
+         SET ${updates.join(", ")}
+         WHERE workspace_id=$1 AND id=$2`,
+        params
+      );
+
+      if (patchHasTitle) changes.after.title = title;
+      if (patchHasNotes) changes.after.notes = notes;
+      if (patchHasTask) changes.after.task_id = taskId;
+      if (patchHasProject) changes.after.project_id = projectId;
+      await appendSheetAuditEvent(db, {
+        workspaceId,
+        sheetId,
+        actorUserId: req.header("x-user-id") || null,
+        action: "worksheet.updated",
+        changes,
+      });
+    }
+    await db.query("COMMIT");
     return res.json({ ok: true });
   } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
     return res.status(err?.status || 500).json({
       ok: false,
       error: err?.code || "SHEET_PATCH_FAILED",
@@ -247,37 +324,63 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/rows", async (req, res) => {
+router.post("/:id/rows", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   const sheetId = String(req.params.id || "").trim();
   if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
   try {
     await ensureSheetTables(db);
-    const row = await addInventorySheetRow(db, {
+    await db.query("BEGIN");
+    const result = await addInventorySheetRow(db, {
       workspaceId,
       sheetId,
       itemId: req.body?.item_id,
       qty: req.body?.qty,
       unit: req.body?.unit,
     });
-    return res.json({ ok: true, row });
+    const sync = isLockedSheet(result.sheet)
+      ? await syncSheetStockMovements(db, {
+          workspaceId,
+          sheetId,
+          userId: req.header("x-user-id") || null,
+          sheet: result.sheet,
+        })
+      : null;
+    await appendSheetAuditEvent(db, {
+      workspaceId,
+      sheetId,
+      actorUserId: req.header("x-user-id") || null,
+      action: "worksheet.items.updated",
+      changes: {
+        op: "add_row",
+        row_id: result.row?.id || null,
+        item_id: result.row?.item_id || null,
+        qty: result.row?.qty || null,
+        lock_sync: sync ? { movements_created: sync.movements_created, qty_delta: sync.qty_delta } : null,
+      },
+    });
+    await db.query("COMMIT");
+    return res.json({ ok: true, row: result.row, lock_sync: sync });
   } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
     return res.status(err?.status || 500).json({
       ok: false,
       error: err?.code || "SHEET_ROW_CREATE_FAILED",
       details: err?.message || String(err),
+      insufficiencies: err?.insufficiencies || null,
     });
   }
 });
 
-router.patch("/:id/rows/:rowId", async (req, res) => {
+router.patch("/:id/rows/:rowId", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   const sheetId = String(req.params.id || "").trim();
   const rowId = String(req.params.rowId || "").trim();
   if (!sheetId || !rowId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
   try {
     await ensureSheetTables(db);
-    await assertSheetDraft(db, workspaceId, sheetId);
+    await db.query("BEGIN");
+    const sheet = await fetchSheetById(db, workspaceId, sheetId, { lock: true });
     const qty = normalizeQty(req.body?.qty);
     const unit = normalizeText(req.body?.unit);
     const itemId = normalizeText(req.body?.item_id);
@@ -294,44 +397,93 @@ router.patch("/:id/rows/:rowId", async (req, res) => {
        RETURNING *`,
       [workspaceId, sheetId, rowId, qty, unit, itemId]
     );
-    if (!result.rowCount) return res.status(404).json({ ok: false, error: "ROW_NOT_FOUND" });
+    if (!result.rowCount) throw makeError("ROW_NOT_FOUND", "Row not found", 404);
     await db.query(`UPDATE public.inventory_sheets SET updated_at=now() WHERE workspace_id=$1 AND id=$2`, [workspaceId, sheetId]);
-    return res.json({ ok: true, row: result.rows[0] });
+
+    const sync = isLockedSheet(sheet)
+      ? await syncSheetStockMovements(db, {
+          workspaceId,
+          sheetId,
+          userId: req.header("x-user-id") || null,
+          sheet,
+        })
+      : null;
+    await appendSheetAuditEvent(db, {
+      workspaceId,
+      sheetId,
+      actorUserId: req.header("x-user-id") || null,
+      action: "worksheet.items.updated",
+      changes: {
+        op: "patch_row",
+        row_id: rowId,
+        item_id: result.rows[0]?.item_id || null,
+        qty: result.rows[0]?.qty || null,
+        lock_sync: sync ? { movements_created: sync.movements_created, qty_delta: sync.qty_delta } : null,
+      },
+    });
+    await db.query("COMMIT");
+    return res.json({ ok: true, row: result.rows[0], lock_sync: sync });
   } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
     return res.status(err?.status || 500).json({
       ok: false,
       error: err?.code || "SHEET_ROW_PATCH_FAILED",
       details: err?.message || String(err),
+      insufficiencies: err?.insufficiencies || null,
     });
   }
 });
 
-router.delete("/:id/rows/:rowId", async (req, res) => {
+router.delete("/:id/rows/:rowId", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   const sheetId = String(req.params.id || "").trim();
   const rowId = String(req.params.rowId || "").trim();
   if (!sheetId || !rowId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
   try {
     await ensureSheetTables(db);
-    await assertSheetDraft(db, workspaceId, sheetId);
+    await db.query("BEGIN");
+    const sheet = await fetchSheetById(db, workspaceId, sheetId, { lock: true });
     const result = await db.query(
       `DELETE FROM public.inventory_sheet_rows
        WHERE workspace_id=$1 AND sheet_id=$2 AND id=$3`,
       [workspaceId, sheetId, rowId]
     );
-    if (!result.rowCount) return res.status(404).json({ ok: false, error: "ROW_NOT_FOUND" });
+    if (!result.rowCount) throw makeError("ROW_NOT_FOUND", "Row not found", 404);
     await db.query(`UPDATE public.inventory_sheets SET updated_at=now() WHERE workspace_id=$1 AND id=$2`, [workspaceId, sheetId]);
-    return res.json({ ok: true });
+
+    const sync = isLockedSheet(sheet)
+      ? await syncSheetStockMovements(db, {
+          workspaceId,
+          sheetId,
+          userId: req.header("x-user-id") || null,
+          sheet,
+        })
+      : null;
+    await appendSheetAuditEvent(db, {
+      workspaceId,
+      sheetId,
+      actorUserId: req.header("x-user-id") || null,
+      action: "worksheet.items.updated",
+      changes: {
+        op: "delete_row",
+        row_id: rowId,
+        lock_sync: sync ? { movements_created: sync.movements_created, qty_delta: sync.qty_delta } : null,
+      },
+    });
+    await db.query("COMMIT");
+    return res.json({ ok: true, lock_sync: sync });
   } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
     return res.status(err?.status || 500).json({
       ok: false,
       error: err?.code || "SHEET_ROW_DELETE_FAILED",
       details: err?.message || String(err),
+      insufficiencies: err?.insufficiencies || null,
     });
   }
 });
 
-router.post("/:id/lock", async (req, res) => {
+router.post("/:id/lock", requirePermission(PERMISSIONS.WORKSHEET_WRITE, { message: "Permesso richiesto: WORKSHEET_WRITE" }), async (req, res) => {
   const { db, workspaceId } = req;
   const sheetId = String(req.params.id || "").trim();
   if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
@@ -349,6 +501,118 @@ router.post("/:id/lock", async (req, res) => {
       error: err?.code || "SHEET_LOCK_FAILED",
       details: err?.message || String(err),
       insufficiencies: err?.insufficiencies || null,
+    });
+  }
+});
+
+router.get("/:id/comments", requirePermission(PERMISSIONS.WORKSHEET_COMMENT_READ, { message: "Permesso richiesto: WORKSHEET_COMMENT_READ" }), async (req, res) => {
+  const { db, workspaceId } = req;
+  const sheetId = String(req.params.id || "").trim();
+  if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
+  try {
+    await ensureSheetTables(db);
+    await fetchSheetById(db, workspaceId, sheetId);
+    const comments = await listSheetComments(db, {
+      workspaceId,
+      sheetId,
+      limit: asLimit(req.query.limit, 100),
+      offset: Math.max(0, Number(req.query.offset || 0) || 0),
+    });
+    return res.json({ ok: true, comments });
+  } catch (err) {
+    return res.status(err?.status || 500).json({
+      ok: false,
+      error: err?.code || "SHEET_COMMENTS_LIST_FAILED",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+router.post("/:id/comments", requirePermission(PERMISSIONS.WORKSHEET_COMMENT_WRITE, { message: "Permesso richiesto: WORKSHEET_COMMENT_WRITE" }), async (req, res) => {
+  const { db, workspaceId } = req;
+  const sheetId = String(req.params.id || "").trim();
+  if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
+  try {
+    await ensureSheetTables(db);
+    await db.query("BEGIN");
+    await fetchSheetById(db, workspaceId, sheetId, { lock: true });
+    const comment = await addSheetComment(db, {
+      workspaceId,
+      sheetId,
+      authorUserId: req.header("x-user-id") || null,
+      bodyText: req.body?.body_text,
+    });
+    await appendSheetAuditEvent(db, {
+      workspaceId,
+      sheetId,
+      actorUserId: req.header("x-user-id") || null,
+      action: "worksheet.comment.created",
+      changes: { comment_id: comment?.id || null },
+    });
+    await db.query("COMMIT");
+    return res.json({ ok: true, comment });
+  } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
+    return res.status(err?.status || 500).json({
+      ok: false,
+      error: err?.code || "SHEET_COMMENT_CREATE_FAILED",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+router.delete("/:id/comments/:commentId", requirePermission(PERMISSIONS.WORKSHEET_COMMENT_DELETE, { message: "Permesso richiesto: WORKSHEET_COMMENT_DELETE" }), async (req, res) => {
+  const { db, workspaceId } = req;
+  const sheetId = String(req.params.id || "").trim();
+  const commentId = String(req.params.commentId || "").trim();
+  if (!sheetId || !commentId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
+  try {
+    await ensureSheetTables(db);
+    await db.query("BEGIN");
+    await fetchSheetById(db, workspaceId, sheetId, { lock: true });
+    await softDeleteSheetComment(db, {
+      workspaceId,
+      sheetId,
+      commentId,
+    });
+    await appendSheetAuditEvent(db, {
+      workspaceId,
+      sheetId,
+      actorUserId: req.header("x-user-id") || null,
+      action: "worksheet.comment.deleted",
+      changes: { comment_id: commentId },
+    });
+    await db.query("COMMIT");
+    return res.json({ ok: true });
+  } catch (err) {
+    await db.query("ROLLBACK").catch(() => {});
+    return res.status(err?.status || 500).json({
+      ok: false,
+      error: err?.code || "SHEET_COMMENT_DELETE_FAILED",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+router.get("/:id/timeline", requirePermission(PERMISSIONS.WORKSHEET_TIMELINE_READ, { message: "Permesso richiesto: WORKSHEET_TIMELINE_READ" }), async (req, res) => {
+  const { db, workspaceId } = req;
+  const sheetId = String(req.params.id || "").trim();
+  if (!sheetId) return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "id required" });
+  try {
+    await ensureSheetTables(db);
+    await fetchSheetById(db, workspaceId, sheetId);
+    const timeline = await listSheetTimeline(db, {
+      workspaceId,
+      sheetId,
+      limit: asLimit(req.query.limit, 100),
+      offset: Math.max(0, Number(req.query.offset || 0) || 0),
+    });
+    return res.json({ ok: true, timeline });
+  } catch (err) {
+    return res.status(err?.status || 500).json({
+      ok: false,
+      error: err?.code || "SHEET_TIMELINE_LIST_FAILED",
+      details: err?.message || String(err),
     });
   }
 });

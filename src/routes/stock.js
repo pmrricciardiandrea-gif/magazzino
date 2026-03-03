@@ -1,10 +1,22 @@
 const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const { applyStockMovement } = require("../services/stockService");
+const { PERMISSIONS, hasPermission } = require("../services/workspaceRole");
 
 const router = express.Router();
 
+const MEMBER_ALLOWED_REFERENCE_TYPES = new Set(["", "manual", "inventory_adjustment", "worksheet", "inventory_sheet"]);
+
+function looksLikeQuoteLink(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return false;
+  return raw.includes("quote") || raw.includes("preventiv");
+}
+
 router.get("/warehouses", async (req, res) => {
+  if (!hasPermission(req.workspaceRole, PERMISSIONS.STOCK_READ)) {
+    return res.status(403).json({ ok: false, error: "FORBIDDEN_ROLE", details: "Permesso richiesto: STOCK_READ" });
+  }
   const { db, workspaceId } = req;
   const includeInactive = String(req.query.include_inactive || "false").toLowerCase() === "true";
   const params = [workspaceId];
@@ -22,6 +34,9 @@ router.get("/warehouses", async (req, res) => {
 });
 
 router.post("/warehouses", async (req, res) => {
+  if (!hasPermission(req.workspaceRole, PERMISSIONS.STOCK_WRITE)) {
+    return res.status(403).json({ ok: false, error: "FORBIDDEN_ROLE", details: "Permesso richiesto: STOCK_WRITE" });
+  }
   const { db, workspaceId } = req;
   const name = String(req.body?.name || "").trim();
   const isDefault = Boolean(req.body?.is_default);
@@ -58,6 +73,9 @@ router.post("/warehouses", async (req, res) => {
 });
 
 router.get("/levels", async (req, res) => {
+  if (!hasPermission(req.workspaceRole, PERMISSIONS.STOCK_READ)) {
+    return res.status(403).json({ ok: false, error: "FORBIDDEN_ROLE", details: "Permesso richiesto: STOCK_READ" });
+  }
   const { db, workspaceId } = req;
   const rows = await db.query(
     `SELECT sl.*, i.name AS item_name, w.name AS warehouse_name,
@@ -73,6 +91,9 @@ router.get("/levels", async (req, res) => {
 });
 
 router.get("/movements", async (req, res) => {
+  if (!hasPermission(req.workspaceRole, PERMISSIONS.MOVEMENTS_READ)) {
+    return res.status(403).json({ ok: false, error: "FORBIDDEN_ROLE", details: "Permesso richiesto: MOVEMENTS_READ" });
+  }
   const { db, workspaceId } = req;
   const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50) || 50));
   const sheetId = String(req.query.sheet_id || "").trim();
@@ -108,14 +129,40 @@ router.get("/movements", async (req, res) => {
 });
 
 router.post("/movements", async (req, res) => {
+  if (!hasPermission(req.workspaceRole, PERMISSIONS.MOVEMENTS_WRITE)) {
+    return res.status(403).json({ ok: false, error: "FORBIDDEN_ROLE", details: "Permesso richiesto: MOVEMENTS_WRITE" });
+  }
   const { db, workspaceId } = req;
   const warehouseId = String(req.body?.warehouse_id || "").trim();
   const itemId = String(req.body?.item_id || "").trim();
   const movementType = String(req.body?.movement_type || "").trim();
   const quantity = Number(req.body?.quantity || 0);
+  const referenceTypeRaw = String(req.body?.reference_type || "").trim().toLowerCase();
+  const referenceIdRaw = String(req.body?.reference_id || "").trim();
+  const reasonRaw = String(req.body?.reason || "").trim();
 
   if (!warehouseId || !itemId || !movementType || !Number.isFinite(quantity) || quantity === 0) {
     return res.status(400).json({ ok: false, error: "VALIDATION_ERROR", details: "warehouse_id, item_id, movement_type, quantity required" });
+  }
+
+  const isPrivilegedRole =
+    hasPermission(req.workspaceRole, PERMISSIONS.QUOTES_READ) ||
+    hasPermission(req.workspaceRole, PERMISSIONS.WORKSHEET_DELETE);
+  if (!isPrivilegedRole) {
+    if (!MEMBER_ALLOWED_REFERENCE_TYPES.has(referenceTypeRaw)) {
+      return res.status(403).json({
+        ok: false,
+        error: "FORBIDDEN_REFERENCE_TYPE",
+        details: "I member possono usare solo reference_type manual|inventory_adjustment|worksheet|inventory_sheet",
+      });
+    }
+    if (looksLikeQuoteLink(referenceTypeRaw) || looksLikeQuoteLink(referenceIdRaw) || looksLikeQuoteLink(reasonRaw)) {
+      return res.status(403).json({
+        ok: false,
+        error: "FORBIDDEN_REFERENCE",
+        details: "I member non possono collegare movimenti ai preventivi",
+      });
+    }
   }
 
   try {
@@ -126,9 +173,9 @@ router.post("/movements", async (req, res) => {
       itemId,
       movementType,
       quantity,
-      reason: req.body?.reason || null,
-      referenceType: req.body?.reference_type || null,
-      referenceId: req.body?.reference_id || null,
+      reason: reasonRaw || null,
+      referenceType: referenceTypeRaw || null,
+      referenceId: referenceIdRaw || null,
       createdBy: req.header("x-user-id") || "api",
     });
     await db.query("COMMIT");
